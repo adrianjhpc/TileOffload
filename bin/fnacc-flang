@@ -65,7 +65,7 @@ FNACC options:
   --fnacc-verbose          Print commands before running them
   --fnacc-dry-run          Print commands without executing them
   --fnacc-stop-after STAGE Stop one FNACC source after a named internal stage
-  --fnacc-backend NAME     Target a specific backend. At the moment only Triton is supported. You can use "triton" or "auto" here
+  --fnacc-backend NAME     Target a specific backend. Use "auto", "triton", or experimental "cuda-tile" 
   --fnacc-fallback-backend NAME 
                            Define a fall back backend. If none is specified Triton is the default
   --fnacc-no-backend-fallback
@@ -101,6 +101,8 @@ Optional environment:
   FNACC_TARGET             cuda (default) or hip
   FNACC_GPU_ARCH           target architecture (sm_90a or gfx942)
   FNACC_AMD_GPU_ARCH       AMD architecture compatibility variable
+  FNACC_CUDA_TILE_TRANSLATE CUDA Tile translator executable (default cuda-tile-translate)
+  FNACC_TILEIRAS           Tile IR assembler executable (default tileiras)
   FNACC_BACKEND            preferred backend, defaults to auto
   FNACC_FALLBACK_BACKEND   fallback backend, defaults to triton
   FNACC_ALLOW_BACKEND_FALLBACK
@@ -349,6 +351,8 @@ if len(manifest) != len(kernels):
 
 by_name = {str(k.get("name")): k for k in kernels}
 for row in manifest:
+    if row.get("backend") == "cuda-tile":
+        continue
     name = str(row["name"])
     kernel = by_name.get(name)
     if kernel is None:
@@ -464,9 +468,9 @@ for kernel in kernels:
             "private_pointer_args", kernel.get("triton_hidden_ptr_args", -1)
         )
     )
-    if private_args != 2:
+    if private_args != (0 if kernel.get("backend") == "cuda-tile" else 2):
         print(
-            "fnacc-flang: error: this runtime supports exactly two private pointer parameters",
+            "fnacc-flang: error: private pointer count disagrees with backend",
             file=sys.stderr,
         )
         raise SystemExit(1)
@@ -521,14 +525,15 @@ accelerator_target = str(
 used_fallback = bool(data.get("used_backend_fallback", False))
 
 for kernel in kernels:
-    if str(kernel.get("backend", selected)) != selected:
-        raise SystemExit("fnacc-flang: error: mixed-backend kernel metadata is unsupported")
-    if str(kernel.get("device_ir_kind", device_ir)) != device_ir:
-        raise SystemExit("fnacc-flang: error: mixed device-IR metadata is unsupported")
-    if str(kernel.get("device_image_kind", image_kind)) != image_kind:
-        raise SystemExit("fnacc-flang: error: mixed device-image metadata is unsupported")
-    if str(kernel.get("accelerator_target", accelerator_target)) != accelerator_target:
-        raise SystemExit("fnacc-flang: error: mixed accelerator-target metadata is unsupported")
+    contract = (kernel.get("backend", "triton"), kernel.get("device_ir_kind", "ttir"),
+                kernel.get("device_image_kind", "ptx"))
+    if contract not in (("triton", "ttir", "ptx"), ("triton", "ttir", "hsaco"),
+                        ("cuda-tile", "cuda-tile-ir", "cubin")):
+        raise SystemExit(f"fnacc-flang: error: unsupported backend contract {contract}")
+    if kernel.get("accelerator_target", accelerator_target) != accelerator_target:
+        raise SystemExit("fnacc-flang: error: mixed accelerator targets")
+if len({k.get("backend", "triton") for k in kernels}) > 1:
+    selected, device_ir, image_kind = "mixed", "mixed", "mixed"
 
 print("\t".join((selected, device_ir, image_kind, accelerator_target,
                  "true" if used_fallback else "false")))
@@ -979,8 +984,8 @@ def find_matching_brace(text, open_pos):
 
     raise RuntimeError("unmatched brace")
 
-def extract_tt_func(text, name):
-    marker = f"tt.func @{name}"
+def extract_tt_func(text, name, tile=False):
+    marker = f"entry @{name}(" if tile else f"tt.func @{name}("
     pos = text.find(marker)
     if pos < 0:
         raise RuntimeError(f"could not find TTIR function @{name}")
@@ -1028,7 +1033,9 @@ for idx, k in enumerate(kernels):
     seen_names.add(name)
     seen_ids.add(kernel_id)
 
-    func_text = extract_tt_func(ttir, name)
+    is_tile = k.get("backend") == "cuda-tile"
+    source_text = Path(sys.argv[1] + ".cuda-tile").read_text() if is_tile else ttir
+    func_text = extract_tt_func(source_text, name, is_tile)
 
     module_text = (
         'module attributes {'
@@ -1041,7 +1048,9 @@ for idx, k in enumerate(kernels):
         '}\n'
     )
 
-    out_ttir = out_dir / f"{name}.ttir"
+    if is_tile:
+        module_text = "cuda_tile.module @fnacc_tiles {\n" + func_text + "}\n"
+    out_ttir = out_dir / (f"{name}.cuda-tile.mlir" if is_tile else f"{name}.ttir")
     out_ttir.write_text(module_text, encoding="utf-8")
 
     image_kind = str(
@@ -1994,6 +2003,29 @@ compile_fnacc_source() {
   local ttir json split_dir manifest embed_c embed_obj
   local effective_num_warps count
   local data_only=0
+  local BACKEND="$BACKEND"
+  local CUDA_TILE_TRANSLATE="${FNACC_CUDA_TILE_TRANSLATE:-cuda-tile-translate}"
+  local TILEIRAS="${FNACC_TILEIRAS:-tileiras}"
+  if [[ "$BACKEND" == "cuda-tile" ]]; then
+    local tile_target_supported=0
+
+    if [[ "$ACCELERATOR_TARGET" == "cuda" &&
+          "$SM_NUM" =~ ^[0-9]+$ ]]; then
+      if (( 10#$SM_NUM >= 80 )); then
+        tile_target_supported=1
+      fi
+    fi
+
+    if (( ! tile_target_supported )); then
+      if [[ "$ALLOW_BACKEND_FALLBACK" == "true" &&
+            "$FALLBACK_BACKEND" == "triton" ]]; then
+        log "  CUDA Tile requires sm_80 or newer; falling back to Triton for $GPU_ARCH"
+        BACKEND=triton
+      else
+        die "CUDA Tile requires a CUDA target sm_80 or newer (or enable Triton fallback)"
+      fi
+    fi
+  fi
   local selected_backend device_ir_kind device_image_kind metadata_target used_backend_fallback
   local ki kernel_name kernel_warps kernel_ttir kernel_ttgir kernel_llvm_mlir
   local kernel_ll kernel_linked_bc kernel_optimized_bc kernel_codegen_ir kernel_ptx
@@ -2076,6 +2108,12 @@ compile_fnacc_source() {
       fi
       metadata_target="$ACCELERATOR_TARGET"
       used_backend_fallback=false
+    elif [[ "$BACKEND" == "cuda-tile" ]]; then
+      selected_backend=cuda-tile
+      device_ir_kind=cuda-tile-ir
+      device_image_kind=cubin
+      metadata_target=cuda
+      used_backend_fallback=false
     elif [[ "$ALLOW_BACKEND_FALLBACK" == "true" &&
             "$FALLBACK_BACKEND" == "triton" ]]; then
       selected_backend=triton
@@ -2121,16 +2159,19 @@ compile_fnacc_source() {
   log "  selected backend: $selected_backend (device IR=$device_ir_kind, image=$device_image_kind, fallback=$used_backend_fallback)"
 
   case "$selected_backend:$device_ir_kind:$device_image_kind" in
-    triton:ttir:ptx|triton:ttir:hsaco)
+    triton:ttir:ptx|triton:ttir:hsaco|mixed:mixed:mixed)
       require_triton_toolchain
-      if [[ "$device_image_kind" == "hsaco" ]]; then
-        require_exe "$LD_LLD"
-      fi
+      if [[ "$device_image_kind" == "hsaco" ]]; then require_exe "$LD_LLD"; fi
       ;;
-    *)
-      die "no driver pipeline is registered for backend '$selected_backend' (device IR '$device_ir_kind', image '$device_image_kind')"
-      ;;
+    cuda-tile:cuda-tile-ir:cubin) ;;
+    *) die "unsupported backend pipeline: $selected_backend:$device_ir_kind:$device_image_kind" ;;
   esac
+  if [[ "$selected_backend" == "cuda-tile" || "$selected_backend" == "mixed" ]]; then
+    CUDA_TILE_TRANSLATE="$(command -v "$CUDA_TILE_TRANSLATE" || true)"
+    TILEIRAS="$(command -v "$TILEIRAS" || true)"
+    require_exe "$CUDA_TILE_TRANSLATE"
+    require_exe "$TILEIRAS"
+  fi
 
   effective_num_warps="$NUM_WARPS"
   if [[ "$DRY_RUN" != "1" ]]; then
@@ -2140,6 +2181,11 @@ compile_fnacc_source() {
 
   if [[ "$DRY_RUN" == "1" ]]; then
     quote_cmd python3 "<split-ttir-helper>" "$ttir" "$json" "$split_dir" "$manifest"
+    if [[ "$selected_backend" == "cuda-tile" || "$selected_backend" == "mixed" ]]; then
+      quote_cmd "$CUDA_TILE_TRANSLATE" "<kernel.cuda-tile.mlir>" --bytecode-version=13.1 --mlir-to-cudatilebc --no-implicit-module -o "<kernel.tilebc>"
+      quote_cmd "$TILEIRAS" --gpu-name "$GPU_ARCH" "<kernel.tilebc>" -o "<kernel.cubin>"
+    fi
+    if [[ "$selected_backend" != "cuda-tile" ]]; then
     quote_cmd "$TRITON_OPT" "<kernel.ttir>" \
       "--convert-triton-to-tritongpu=target=$TRITON_TARGET num-warps=<kernel-warps>" \
       -o "<kernel.ttgir.mlir>"
@@ -2170,6 +2216,7 @@ compile_fnacc_source() {
         -o "<kernel.hsaco>"
       maybe_stop hsaco
     fi
+    fi
     maybe_stop device-image
   else
     log "  [4/10] Split TTIR per kernel"
@@ -2177,8 +2224,20 @@ compile_fnacc_source() {
     test -s "$manifest" || die "kernel manifest was not generated: $manifest"
     count="$(manifest_count "$manifest")"
 
-    log "  [5/10] Lower kernels to TTGIR"
     for ((ki = 0; ki < count; ++ki)); do
+      if [[ "$(manifest_get "$manifest" "$ki" backend)" != "cuda-tile" ]]; then continue; fi
+      kernel_name="$(manifest_get "$manifest" "$ki" name)"
+      kernel_ttir="$(manifest_get "$manifest" "$ki" ttir)"
+      kernel_image="$(manifest_get "$manifest" "$ki" image)"
+      log "  CUDA Tile: $kernel_name -> cubin"
+      run "$CUDA_TILE_TRANSLATE" "$kernel_ttir" --bytecode-version=13.1 \
+        --mlir-to-cudatilebc --no-implicit-module -o "$kernel_ttir.tilebc"
+      run "$TILEIRAS" --gpu-name "$GPU_ARCH" "$kernel_ttir.tilebc" -o "$kernel_image"
+      test -s "$kernel_image" || die "CUDA Tile image not generated: $kernel_name"
+    done
+    log "  [5/10] Lower Triton kernels to TTGIR"
+    for ((ki = 0; ki < count; ++ki)); do
+      if [[ "$(manifest_get "$manifest" "$ki" backend)" == "cuda-tile" ]]; then continue; fi
       kernel_name="$(manifest_get "$manifest" "$ki" name)"
       kernel_warps="$(manifest_get "$manifest" "$ki" num_warps)"
       kernel_ttir="$(manifest_get "$manifest" "$ki" ttir)"
@@ -2212,6 +2271,7 @@ compile_fnacc_source() {
 
     log "  [6/10] Lower TTGIR to LLVM MLIR"
     for ((ki = 0; ki < count; ++ki)); do
+      if [[ "$(manifest_get "$manifest" "$ki" backend)" == "cuda-tile" ]]; then continue; fi
       kernel_name="$(manifest_get "$manifest" "$ki" name)"
       kernel_ttgir="$(manifest_get "$manifest" "$ki" ttgir)"
       kernel_llvm_mlir="$(manifest_get "$manifest" "$ki" llvm_mlir)"
@@ -2276,6 +2336,7 @@ compile_fnacc_source() {
 
     log "  [7/10] Translate kernels to LLVM IR"
     for ((ki = 0; ki < count; ++ki)); do
+      if [[ "$(manifest_get "$manifest" "$ki" backend)" == "cuda-tile" ]]; then continue; fi
       kernel_name="$(manifest_get "$manifest" "$ki" name)"
       kernel_llvm_mlir="$(manifest_get "$manifest" "$ki" llvm_mlir)"
       kernel_ll="$(manifest_get "$manifest" "$ki" ll)"
@@ -2290,6 +2351,7 @@ compile_fnacc_source() {
       log "  [8/10] Compile kernels to HSACO"
     fi
     for ((ki = 0; ki < count; ++ki)); do
+      if [[ "$(manifest_get "$manifest" "$ki" backend)" == "cuda-tile" ]]; then continue; fi
       kernel_name="$(manifest_get "$manifest" "$ki" name)"
       kernel_ll="$(manifest_get "$manifest" "$ki" ll)"
       kernel_ptx="$(manifest_get "$manifest" "$ki" ptx)"
