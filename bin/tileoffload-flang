@@ -4,14 +4,14 @@ set -euo pipefail
 usage() {
   cat <<'EOF'
 Usage:
-  fnacc-flang [options] file...
-  fnacc-flang -c [options] source.f90 [-o source.o]
-  fnacc-flang [options] source.f90 objects... libraries... -o program
+  tileoffload-flang [options] file...
+  tileoffload-flang -c [options] source.f90 [-o source.o]
+  tileoffload-flang [options] source.f90 objects... libraries... -o program
 
 Compiler-driver behavior:
   * Ordinary Fortran sources are compiled by flang with user flags preserved.
-  * Sources containing !$fnacc (also c$fnacc and *$fnacc) use the FNACC pipeline.
-  * -c produces a normal relocatable object. An FNACC object includes its host
+  * Sources containing !$tileoff (also c$tileoff and *$tileoff) use the TileOffload pipeline.
+  * -c produces a normal relocatable object. An TileOffload object includes its host
     code and embedded GPU image/JSON, so it can be linked later.
   * Without -c, sources are compiled to temporary objects and then linked with
     user objects, archives, libraries, and linker flags in command-line order.
@@ -29,46 +29,46 @@ Traditional options:
                            Passed through to the appropriate compiler/link step
   --                       Treat all remaining arguments as input files
 
-FNACC options:
-  --fnacc-force            Run FNACC lowering for every Fortran source
-  --fnacc-disable          Never run FNACC lowering; delegate sources to flang
-  --fnacc-runtime          Force FNACC runtime libraries into the link
-  --fnacc-no-runtime       Do not auto-add FNACC runtime libraries
-  --fnacc-target NAME      Accelerator platform: cuda (default) or hip
-  --fnacc-gpu-arch ARCH    GPU architecture: e.g. sm_90a or gfx942
-  --fnacc-sm NUM           CUDA SM compatibility spelling
-  --fnacc-amd-arch ARCH    AMD architecture compatibility spelling
-  --fnacc-backend NAME     Preferred code-generation backend; default auto
-  --fnacc-fallback-backend NAME
+TileOffload options:
+  --tileoff-force            Run TileOffload lowering for every Fortran source
+  --tileoff-disable          Never run TileOffload lowering; delegate sources to flang
+  --tileoff-runtime          Force TileOffload runtime libraries into the link
+  --tileoff-no-runtime       Do not auto-add TileOffload runtime libraries
+  --tileoff-target NAME      Accelerator platform: cuda (default) or hip
+  --tileoff-gpu-arch ARCH    GPU architecture: e.g. sm_90a or gfx942
+  --tileoff-sm NUM           CUDA SM compatibility spelling
+  --tileoff-amd-arch ARCH    AMD architecture compatibility spelling
+  --tileoff-backend NAME     Preferred code-generation backend; default auto
+  --tileoff-fallback-backend NAME
                            Backend used when the preferred backend cannot lower
                            a kernel; default triton
-  --fnacc-backend-fallback Enable backend fallback (the default)
-  --fnacc-no-backend-fallback
+  --tileoff-backend-fallback Enable backend fallback (the default)
+  --tileoff-no-backend-fallback
                            Fail instead of using the fallback backend
-  --fnacc-launch-abi N     Host launch ABI: 2 or 3 (default).
-  --fnacc-num-warps N      Triton warps; default FNACC_NUM_WARPS or 1.
+  --tileoff-launch-abi N     Host launch ABI: 2 or 3 (default).
+  --tileoff-num-warps N      Triton warps; default TILEOFFLOAD_NUM_WARPS or 1.
                            Multi-warp reduction lowering is automatic.
-  --fnacc-threads-per-warp N
+  --tileoff-threads-per-warp N
                            Threads per warp; CUDA currently requires 32
-  --fnacc-num-stages N     Triton pipeline stages; default FNACC_NUM_STAGES or 3
-  --fnacc-f64-matmul-strategy NAME
+  --tileoff-num-stages N     Triton pipeline stages; default TILEOFFLOAD_NUM_STAGES or 3
+  --tileoff-f64-matmul-strategy NAME
                            reduce, fma, or dot
-  --fnacc-cuda-lib-dir DIR CUDA driver library directory
-  --fnacc-cuda-libdevice FILE
+  --tileoff-cuda-lib-dir DIR CUDA driver library directory
+  --tileoff-cuda-libdevice FILE
                            CUDA libdevice bitcode; normally auto-detected
-  --fnacc-rocm-path DIR    ROCm installation prefix; default ROCM_PATH or /opt/rocm
-  --fnacc-rocm-device-lib-dir DIR
+  --tileoff-rocm-path DIR    ROCm installation prefix; default ROCM_PATH or /opt/rocm
+  --tileoff-rocm-device-lib-dir DIR
                            ROCm device bitcode directory; normally auto-detected
-  --fnacc-hip-lib-dir DIR  HIP runtime library directory
-  --fnacc-workdir DIR      Parent for a unique intermediate directory
-  --fnacc-keep             Keep intermediate files
-  --fnacc-verbose          Print commands before running them
-  --fnacc-dry-run          Print commands without executing them
-  --fnacc-stop-after STAGE Stop one FNACC source after a named internal stage
-  --fnacc-backend NAME     Target a specific backend. Use "auto", "triton", or experimental "cuda-tile" 
-  --fnacc-fallback-backend NAME 
+  --tileoff-hip-lib-dir DIR  HIP runtime library directory
+  --tileoff-workdir DIR      Parent for a unique intermediate directory
+  --tileoff-keep             Keep intermediate files
+  --tileoff-verbose          Print commands before running them
+  --tileoff-dry-run          Print commands without executing them
+  --tileoff-stop-after STAGE Stop one TileOffload source after a named internal stage
+  --tileoff-backend NAME     Target a specific backend. Use "auto", "triton", or experimental "cuda-tile" 
+  --tileoff-fallback-backend NAME 
                            Define a fall back backend. If none is specified Triton is the default
-  --fnacc-no-backend-fallback
+  --tileoff-no-backend-fallback
                            Turn off a default fallback so compilation fails if one isn't specified or available.
   -h, --help               Show this help
 
@@ -78,9 +78,9 @@ Compatibility aliases:
   --verbose, --dry-run, and --stop-after are accepted as aliases.
 
 Linking:
-  Multiple FNACC sources, objects, and archives may contribute embedded kernel
+  Multiple TileOffload sources, objects, and archives may contribute embedded kernel
   bundles to one executable. Auto-detection scans named objects and archives;
-  use --fnacc-runtime when FNACC code is supplied only through -lNAME.
+  use --tileoff-runtime when TileOffload code is supplied only through -lNAME.
 
 Environment:
   LLVM_BUILD               llvm-project build directory
@@ -93,34 +93,34 @@ Environment:
   CUDA_LIB_DIR             Optional CUDA driver library directory
 
 Optional environment:
-  FNACC_LAUNCH_ABI         host launch ABI, defaults to 3
-  FNACC_NUM_WARPS          number of warps to use, defaults to 1
-  FNACC_THREADS_PER_WARP   threads per warp, defaults to 32
-  FNACC_NUM_STAGES         number of Triton pipeline stages, defaults to 3
-  FNACC_SM                 default CUDA SM, default 80
-  FNACC_TARGET             cuda (default) or hip
-  FNACC_GPU_ARCH           target architecture (sm_90a or gfx942)
-  FNACC_AMD_GPU_ARCH       AMD architecture compatibility variable
-  FNACC_CUDA_TILE_TRANSLATE CUDA Tile translator executable (default cuda-tile-translate)
-  FNACC_TILEIRAS           Tile IR assembler executable (default tileiras)
-  FNACC_BACKEND            preferred backend, defaults to auto
-  FNACC_FALLBACK_BACKEND   fallback backend, defaults to triton
-  FNACC_ALLOW_BACKEND_FALLBACK
+  TILEOFFLOAD_LAUNCH_ABI         host launch ABI, defaults to 3
+  TILEOFFLOAD_NUM_WARPS          number of warps to use, defaults to 1
+  TILEOFFLOAD_THREADS_PER_WARP   threads per warp, defaults to 32
+  TILEOFFLOAD_NUM_STAGES         number of Triton pipeline stages, defaults to 3
+  TILEOFFLOAD_SM                 default CUDA SM, default 80
+  TILEOFFLOAD_TARGET             cuda (default) or hip
+  TILEOFFLOAD_GPU_ARCH           target architecture (sm_90a or gfx942)
+  TILEOFFLOAD_AMD_GPU_ARCH       AMD architecture compatibility variable
+  TILEOFFLOAD_CUDA_TILE_TRANSLATE CUDA Tile translator executable (default cuda-tile-translate)
+  TILEOFFLOAD_TILEIRAS           Tile IR assembler executable (default tileiras)
+  TILEOFFLOAD_BACKEND            preferred backend, defaults to auto
+  TILEOFFLOAD_FALLBACK_BACKEND   fallback backend, defaults to triton
+  TILEOFFLOAD_ALLOW_BACKEND_FALLBACK
                            boolean; defaults to true
-  FNACC_CUDA_LIBDEVICE     CUDA libdevice.10.bc override. Required only when
+  TILEOFFLOAD_CUDA_LIBDEVICE     CUDA libdevice.10.bc override. Required only when
                            generated device IR references __nv_* functions.
   ROCM_PATH                ROCm installation prefix; default /opt/rocm
-  FNACC_ROCM_DEVICE_LIB_DIR
+  TILEOFFLOAD_ROCM_DEVICE_LIB_DIR
                            ROCm bitcode directory containing ocml.bc/ockl.bc
-  FNACC_HIP_LIB_DIR        directory containing libamdhip64
+  TILEOFFLOAD_HIP_LIB_DIR        directory containing libamdhip64
   CUDA_HOME, CUDA_PATH, CUDAToolkit_ROOT
                            CUDA roots considered during libdevice discovery.
-  FNACC_WORKDIR            default work directory. If unset, uses a temp dir.
-  FNACC_CUDA_DEVICE        CUDA device ordinal; may be changed between calls.
-  FNACC_USE_CURRENT_CONTEXT
+  TILEOFFLOAD_WORKDIR            default work directory. If unset, uses a temp dir.
+  TILEOFFLOAD_CUDA_DEVICE        CUDA device ordinal; may be changed between calls.
+  TILEOFFLOAD_USE_CURRENT_CONTEXT
                            use the caller's current CUDA context instead of a
                            retained primary context selected by device ordinal.
-  FNACC_REDUCTION_STATS    print reduction workspace counters at process exit
+  TILEOFFLOAD_REDUCTION_STATS    print reduction workspace counters at process exit
   FLANG                    override flang-new
   FLANG_INTRINSIC_MODULES_PATH
                            override Flang's precompiled intrinsic module dir
@@ -129,34 +129,34 @@ Optional environment:
   CLANG                    override clang
 
 Advanced environment:
-  FNACC_TTGIR_TO_LLVM_PASSES
+  TILEOFFLOAD_TTGIR_TO_LLVM_PASSES
                            Override TTGIR -> LLVM MLIR pass pipeline.
                            Parsed with shell-like quoting.
-  FNACC_TTIR_TO_TTGIR_PASSES
+  TILEOFFLOAD_TTIR_TO_TTGIR_PASSES
                            Override TTIR -> TTGIR pass pipeline.
                            Parsed with shell-like quoting.
-  FNACC_HIP_TTIR_TO_TTGIR_PASSES
-  FNACC_HIP_TTGIR_TO_LLVM_PASSES
+  TILEOFFLOAD_HIP_TTIR_TO_TTGIR_PASSES
+  TILEOFFLOAD_HIP_TTGIR_TO_LLVM_PASSES
                            HIP-specific pass-pipeline overrides.
-  FNACC_ALLOW_EMPTY_KERNELS
-                           Allow no recognized kernels even when an FNACC
-                           parallel launch was present. Data-only FNACC
+  TILEOFFLOAD_ALLOW_EMPTY_KERNELS
+                           Allow no recognized kernels even when an TileOffload
+                           parallel launch was present. Data-only TileOffload
                            sources are accepted automatically.
                            Default: 0
 EOF
 }
 
 die() {
-  echo "fnacc-flang: error: $*" >&2
+  echo "tileoffload-flang: error: $*" >&2
   exit 1
 }
 
 warn() {
-  echo "fnacc-flang: warning: $*" >&2
+  echo "tileoffload-flang: warning: $*" >&2
 }
 
 log() {
-  echo "[fnacc-flang] $*" >&2
+  echo "[tileoffload-flang] $*" >&2
 }
 
 quote_cmd() {
@@ -199,7 +199,7 @@ hash_path() {
 }
 
 make_temp_file() {
-  mktemp "$WORKDIR/.fnacc-check.XXXXXX"
+  mktemp "$WORKDIR/.tileoff-check.XXXXXX"
 }
 
 object_for_src() {
@@ -270,19 +270,19 @@ for row in rows:
     )
     if image_kind not in kind_values:
         raise SystemExit(
-            f"fnacc-flang: error: cannot embed unsupported image kind {image_kind!r}"
+            f"tileoffload-flang: error: cannot embed unsupported image kind {image_kind!r}"
         )
     image_path = row.get("image", row.get("ptx"))
     if not image_path:
         raise SystemExit(
-            f"fnacc-flang: error: manifest has no device image for {row['name']}"
+            f"tileoffload-flang: error: manifest has no device image for {row['name']}"
         )
-    arr = f"__fnacc_embedded_image_{row['index']}_{name}"
+    arr = f"__tileoff_embedded_image_{row['index']}_{name}"
     image_array_names.append(arr)
     image_kinds.append(kind_values[image_kind])
     chunks.append(emit_array(arr, Path(image_path).read_bytes()))
 
-chunks.append(emit_array("__fnacc_embedded_json", json_bytes))
+chunks.append(emit_array("__tileoff_embedded_json", json_bytes))
 
 ptrs = ",\n  ".join(f"(const void *){name}" for name in image_array_names)
 sizes = ",\n  ".join(f"sizeof({name})" for name in image_array_names)
@@ -292,7 +292,7 @@ content = f"""\
 #include <stddef.h>
 #include <stdint.h>
 
-extern void __fnacc_register_embedded_device_bundle(
+extern void __tileoff_register_embedded_device_bundle(
     const void * const *imageData,
     const size_t *imageSizes,
     const int32_t *imageKinds,
@@ -302,27 +302,27 @@ extern void __fnacc_register_embedded_device_bundle(
 
 {chr(10).join(chunks)}
 
-static const void *__fnacc_embedded_image_ptrs[] = {{
+static const void *__tileoff_embedded_image_ptrs[] = {{
   {ptrs}
 }};
 
-static const size_t __fnacc_embedded_image_sizes[] = {{
+static const size_t __tileoff_embedded_image_sizes[] = {{
   {sizes}
 }};
 
-static const int32_t __fnacc_embedded_image_kinds[] = {{
+static const int32_t __tileoff_embedded_image_kinds[] = {{
   {kinds}
 }};
 
 __attribute__((constructor))
-static void __fnacc_register_embedded_payload(void) {{
-  __fnacc_register_embedded_device_bundle(
-      __fnacc_embedded_image_ptrs,
-      __fnacc_embedded_image_sizes,
-      __fnacc_embedded_image_kinds,
-      sizeof(__fnacc_embedded_image_ptrs) / sizeof(__fnacc_embedded_image_ptrs[0]),
-      (const char *)__fnacc_embedded_json,
-      sizeof(__fnacc_embedded_json));
+static void __tileoff_register_embedded_payload(void) {{
+  __tileoff_register_embedded_device_bundle(
+      __tileoff_embedded_image_ptrs,
+      __tileoff_embedded_image_sizes,
+      __tileoff_embedded_image_kinds,
+      sizeof(__tileoff_embedded_image_ptrs) / sizeof(__tileoff_embedded_image_ptrs[0]),
+      (const char *)__tileoff_embedded_json,
+      sizeof(__tileoff_embedded_json));
 }}
 """
 
@@ -346,7 +346,7 @@ kernels = metadata.get("kernels", [])
 
 if len(manifest) != len(kernels):
     raise SystemExit(
-        f"fnacc-flang: error: manifest has {len(manifest)} kernels but JSON has {len(kernels)}"
+        f"tileoffload-flang: error: manifest has {len(manifest)} kernels but JSON has {len(kernels)}"
     )
 
 by_name = {str(k.get("name")): k for k in kernels}
@@ -356,7 +356,7 @@ for row in manifest:
     name = str(row["name"])
     kernel = by_name.get(name)
     if kernel is None:
-        raise SystemExit(f"fnacc-flang: error: no JSON metadata for PTX kernel {name}")
+        raise SystemExit(f"tileoffload-flang: error: no JSON metadata for PTX kernel {name}")
 
     text = Path(row["ptx"]).read_text(encoding="utf-8")
     # Match the entry declaration itself, not the start of its body.  LLVM's
@@ -372,7 +372,7 @@ for row in manifest:
         flags=re.MULTILINE | re.DOTALL,
     )
     if match is None:
-        raise SystemExit(f"fnacc-flang: error: PTX entry {name} was not found in {row['ptx']}")
+        raise SystemExit(f"tileoffload-flang: error: PTX entry {name} was not found in {row['ptx']}")
 
     actual = len(re.findall(r"\.param\b", match.group(1)))
     explicit = len(kernel.get("params", []))
@@ -384,7 +384,7 @@ for row in manifest:
     actual_hidden = actual - explicit
     if actual_hidden != expected_hidden:
         raise SystemExit(
-            "fnacc-flang: error: Triton/runtime ABI mismatch for "
+            "tileoffload-flang: error: Triton/runtime ABI mismatch for "
             f"{name}: PTX has {actual} parameters ({actual_hidden} hidden), "
             f"but metadata expects {explicit} explicit + {expected_hidden} hidden. "
             "Use matching LLVM/Triton sources; do not run this binary."
@@ -437,31 +437,31 @@ with open(path, "r", encoding="utf-8") as f:
     data = json.load(f)
 
 kernels = data.get("kernels", [])
-if data.get("fnacc_schema_version") != 1:
-    print(f"fnacc-flang: error: unsupported FNACC JSON schema in {path}", file=sys.stderr)
+if data.get("tileoff_schema_version") != 1:
+    print(f"tileoffload-flang: error: unsupported TileOffload JSON schema in {path}", file=sys.stderr)
     raise SystemExit(1)
 contract_version = data.get("backend_contract_version")
 if contract_version is not None and int(contract_version) != 1:
     print(
-        f"fnacc-flang: error: unsupported backend contract version {contract_version}",
+        f"tileoffload-flang: error: unsupported backend contract version {contract_version}",
         file=sys.stderr,
     )
     raise SystemExit(1)
 if not isinstance(kernels, list):
-    print("fnacc-flang: error: kernel JSON has no kernel list", file=sys.stderr)
+    print("tileoffload-flang: error: kernel JSON has no kernel list", file=sys.stderr)
     raise SystemExit(1)
 
 for kernel in kernels:
     precision = kernel.get("matmul_precision", "ieee")
     if precision not in ("ieee", "tf32", "tf32x3"):
-        raise SystemExit("fnacc-flang: error: invalid matmul_precision metadata")
+        raise SystemExit("tileoffload-flang: error: invalid matmul_precision metadata")
     if precision != "ieee":
         if sys.argv[2] != "cuda" or int(sys.argv[3]) < 80:
             raise SystemExit(
-                f"fnacc-flang: error: matmul_precision({precision}) requires CUDA SM80 or newer"
+                f"tileoffload-flang: error: matmul_precision({precision}) requires CUDA SM80 or newer"
             )
     if not isinstance(kernel.get("params"), list):
-        print("fnacc-flang: error: kernel JSON has no parameter list", file=sys.stderr)
+        print("tileoffload-flang: error: kernel JSON has no parameter list", file=sys.stderr)
         raise SystemExit(1)
     private_args = int(
         kernel.get(
@@ -470,7 +470,7 @@ for kernel in kernels:
     )
     if private_args != (0 if kernel.get("backend") == "cuda-tile" else 2):
         print(
-            "fnacc-flang: error: private pointer count disagrees with backend",
+            "tileoffload-flang: error: private pointer count disagrees with backend",
             file=sys.stderr,
         )
         raise SystemExit(1)
@@ -489,7 +489,7 @@ with open(sys.argv[1], "r", encoding="utf-8") as f:
 
 kernels = data.get("kernels", [])
 if not isinstance(kernels, list):
-    raise SystemExit("fnacc-flang: error: kernel JSON has no kernel list")
+    raise SystemExit("tileoffload-flang: error: kernel JSON has no kernel list")
 print(len(kernels))
 PY
 }
@@ -529,9 +529,9 @@ for kernel in kernels:
                 kernel.get("device_image_kind", "ptx"))
     if contract not in (("triton", "ttir", "ptx"), ("triton", "ttir", "hsaco"),
                         ("cuda-tile", "cuda-tile-ir", "cubin")):
-        raise SystemExit(f"fnacc-flang: error: unsupported backend contract {contract}")
+        raise SystemExit(f"tileoffload-flang: error: unsupported backend contract {contract}")
     if kernel.get("accelerator_target", accelerator_target) != accelerator_target:
-        raise SystemExit("fnacc-flang: error: mixed accelerator targets")
+        raise SystemExit("tileoffload-flang: error: mixed accelerator targets")
 if len({k.get("backend", "triton") for k in kernels}) > 1:
     selected, device_ir, image_kind = "mixed", "mixed", "mixed"
 
@@ -552,7 +552,7 @@ for kernel in kernels:
         print(kernel.get("matmul_precision", "ieee"))
         break
 else:
-    raise SystemExit("fnacc-flang: error: missing kernel precision metadata")
+    raise SystemExit("tileoffload-flang: error: missing kernel precision metadata")
 PYCODE
 }
 
@@ -635,7 +635,7 @@ resolve_cuda_libdevice() {
     return
   fi
 
-  die "generated CUDA device IR references __nv_* functions, but libdevice.10.bc was not found; set FNACC_CUDA_LIBDEVICE or pass --fnacc-cuda-libdevice"
+  die "generated CUDA device IR references __nv_* functions, but libdevice.10.bc was not found; set TILEOFFLOAD_CUDA_LIBDEVICE or pass --tileoff-cuda-libdevice"
 }
 
 link_cuda_libdevice_if_needed() {
@@ -692,14 +692,14 @@ for start in re.finditer(r'(?m)^[ \t]*\.extern[ \t]+\.func\b', text):
 names = sorted(names)
 if names:
     print(
-        "fnacc-flang: error: PTX for "
+        "tileoffload-flang: error: PTX for "
         + kernel
         + " still contains unresolved CUDA libdevice functions: "
         + ", ".join(names),
         file=sys.stderr,
     )
     print(
-        "fnacc-flang: error: use LLVM_LINK, OPT, LLC, and libdevice.10.bc from compatible toolchains",
+        "tileoffload-flang: error: use LLVM_LINK, OPT, LLC, and libdevice.10.bc from compatible toolchains",
         file=sys.stderr,
     )
     raise SystemExit(1)
@@ -726,7 +726,7 @@ resolve_rocm_device_libs() {
   fi
 
   [[ -n "$ROCM_DEVICE_LIB_DIR" && -d "$ROCM_DEVICE_LIB_DIR" ]] ||
-    die "ROCm device libraries were not found; set FNACC_ROCM_DEVICE_LIB_DIR or --fnacc-rocm-device-lib-dir"
+    die "ROCm device libraries were not found; set TILEOFFLOAD_ROCM_DEVICE_LIB_DIR or --tileoff-rocm-device-lib-dir"
   [[ -f "$ROCM_DEVICE_LIB_DIR/ocml.bc" ]] ||
     die "ROCm device library is missing: $ROCM_DEVICE_LIB_DIR/ocml.bc"
   [[ -f "$ROCM_DEVICE_LIB_DIR/ockl.bc" ]] ||
@@ -808,7 +808,7 @@ with open(path, "rb") as f:
     magic = f.read(4)
 if magic != b"\x7fELF":
     raise SystemExit(
-        f"fnacc-flang: error: device image for {kernel} is not an ELF HSACO"
+        f"tileoffload-flang: error: device image for {kernel} is not an ELF HSACO"
     )
 PY
 }
@@ -826,11 +826,11 @@ validate_no_triton_gpu_ops() {
     "$file" > "$ttg_left" || true
 
   if [[ -s "$ttg_left" ]]; then
-    echo "fnacc-flang: error: residual TritonGPU dialect ops remain after LLVM lowering:" >&2
+    echo "tileoffload-flang: error: residual TritonGPU dialect ops remain after LLVM lowering:" >&2
     head -20 "$ttg_left" >&2
     echo >&2
     echo "This usually means the Triton pass pipeline did not fully lower TTGIR." >&2
-    echo "Check that triton-opt provides --convert-nv-gpu-to-llvm, or set FNACC_TTGIR_TO_LLVM_PASSES." >&2
+    echo "Check that triton-opt provides --convert-nv-gpu-to-llvm, or set TILEOFFLOAD_TTGIR_TO_LLVM_PASSES." >&2
     echo "The driver already lowers residual ttg.warp_id operations; this is another unlowered TritonGPU operation." >&2
     rm -f "$ttg_left" "$tt_left"
     exit 1
@@ -840,7 +840,7 @@ validate_no_triton_gpu_ops() {
     "$file" > "$tt_left" || true
 
   if [[ -s "$tt_left" ]]; then
-    echo "fnacc-flang: error: residual Triton dialect ops remain after LLVM lowering:" >&2
+    echo "tileoffload-flang: error: residual Triton dialect ops remain after LLVM lowering:" >&2
     head -20 "$tt_left" >&2
     rm -f "$ttg_left" "$tt_left"
     exit 1
@@ -859,7 +859,7 @@ validate_no_unrealized_casts() {
     "$file" > "$left" || true
 
   if [[ -s "$left" ]]; then
-    echo "fnacc-flang: error: unrealized conversion casts remain before LLVM translation:" >&2
+    echo "tileoffload-flang: error: unrealized conversion casts remain before LLVM translation:" >&2
     head -20 "$left" >&2
     rm -f "$left"
     exit 1
@@ -906,7 +906,7 @@ with open(inp, "r", encoding="utf-8") as f, open(out, "w", encoding="utf-8") as 
 
 if changed:
     print(
-        f"fnacc-flang: lowered {changed} ttg.warp_id op(s) "
+        f"tileoffload-flang: lowered {changed} ttg.warp_id op(s) "
         f"to the NVPTX warp-id register",
         file=sys.stderr,
     )
@@ -998,7 +998,7 @@ def extract_tt_func(text, name, tile=False):
 
     sig_line = text[pos:sig_end]
 
-    # Current FNACC emits:
+    # Current TileOffload emits:
     #   tt.func @foo(...) attributes {noinline = false} {
     # The body opener is the last "{" on the signature line.
     rel_body_open = sig_line.rfind("{")
@@ -1049,7 +1049,7 @@ for idx, k in enumerate(kernels):
     )
 
     if is_tile:
-        module_text = "cuda_tile.module @fnacc_tiles {\n" + func_text + "}\n"
+        module_text = "cuda_tile.module @tileoff_tiles {\n" + func_text + "}\n"
     out_ttir = out_dir / (f"{name}.cuda-tile.mlir" if is_tile else f"{name}.ttir")
     out_ttir.write_text(module_text, encoding="utf-8")
 
@@ -1160,21 +1160,21 @@ is_fortran_language() {
   esac
 }
 
-source_has_fnacc() {
+source_has_tileoff() {
   local source="$1"
   [[ "$source" != "-" ]] || return 1
-  grep -Eiq '^[[:space:]]*([!c*][[:space:]]*)?\$fnacc([[:space:]]|$)' "$source"
+  grep -Eiq '^[[:space:]]*([!c*][[:space:]]*)?\$tileoff([[:space:]]|$)' "$source"
 }
 
-source_has_fnacc_parallel() {
+source_has_tileoff_parallel() {
   local source="$1"
   [[ "$source" != "-" ]] || return 1
-  grep -Eiq '^[[:space:]]*([!c*][[:space:]]*)?\$fnacc[[:space:]]+parallel([[:space:]]|$)' "$source"
+  grep -Eiq '^[[:space:]]*([!c*][[:space:]]*)?\$tileoff[[:space:]]+parallel([[:space:]]|$)' "$source"
 }
 
-fir_has_fnacc_launch() {
+fir_has_tileoff_launch() {
   local fir_file="$1"
-  grep -Eq '(^|[[:space:]"(])fnacc\.launch([[:space:]"({]|$)' "$fir_file"
+  grep -Eq '(^|[[:space:]"(])tileoff\.launch([[:space:]"({]|$)' "$fir_file"
 }
 
 sanitize_stem() {
@@ -1313,21 +1313,21 @@ count_embedded_bundles() {
   }
 
   symbols="$($NM -A "$input" 2>/dev/null || true)"
-  marker_count="$(grep -c '__fnacc_single_embedded_bundle' <<<"$symbols" || true)"
+  marker_count="$(grep -c '__tileoff_single_embedded_bundle' <<<"$symbols" || true)"
   if (( marker_count > 0 )); then
     printf '%s\n' "$marker_count"
     return
   fi
-  register_count="$(grep -Ec '__fnacc_register_embedded_(device|kernel)_bundle' <<<"$symbols" || true)"
+  register_count="$(grep -Ec '__tileoff_register_embedded_(device|kernel)_bundle' <<<"$symbols" || true)"
   printf '%s\n' "$register_count"
 }
 
-input_needs_fnacc_runtime() {
+input_needs_tileoff_runtime() {
   local input="$1"
   local symbols
   [[ -n "${NM:-}" && -f "$input" ]] || return 1
   symbols="$("$NM" -A "$input" 2>/dev/null || true)"
-  grep -q '__fnacc_' <<<"$symbols" || return 1
+  grep -q '__tileoff_' <<<"$symbols" || return 1
 }
 
 add_compile_only() {
@@ -1361,7 +1361,7 @@ record_input() {
   if is_fortran_source "$input" || is_fortran_language "$CURRENT_LANGUAGE"; then
     index="${#SOURCES[@]}"
     SOURCES+=("$input")
-    LINK_SEQUENCE+=("__FNACC_SOURCE_${index}__")
+    LINK_SEQUENCE+=("__TILEOFFLOAD_SOURCE_${index}__")
   else
     OTHER_INPUTS+=("$input")
     LINK_SEQUENCE+=("$input")
@@ -1369,7 +1369,7 @@ record_input() {
 }
 
 SOURCES=()
-SOURCE_IS_FNACC=()
+SOURCE_IS_TILEOFFLOAD=()
 SOURCE_OBJECTS=()
 OTHER_INPUTS=()
 LINK_SEQUENCE=()
@@ -1387,28 +1387,28 @@ CURRENT_LANGUAGE="none"
 AFTER_DASH_DASH=0
 HAS_LTO=0
 
-FORCE_FNACC=0
-DISABLE_FNACC=0
+FORCE_TILEOFFLOAD=0
+DISABLE_TILEOFFLOAD=0
 FORCE_RUNTIME=0
 DISABLE_RUNTIME=0
 
-ACCELERATOR_TARGET="${FNACC_TARGET:-cuda}"
-GPU_ARCH="${FNACC_GPU_ARCH:-}"
-SM="${FNACC_SM:-sm_90a}"
-BACKEND="${FNACC_BACKEND:-auto}"
-FALLBACK_BACKEND="${FNACC_FALLBACK_BACKEND:-triton}"
-ALLOW_BACKEND_FALLBACK="${FNACC_ALLOW_BACKEND_FALLBACK:-true}"
-LAUNCH_ABI="${FNACC_LAUNCH_ABI:-3}"
-NUM_WARPS="${FNACC_NUM_WARPS:-1}"
-THREADS_PER_WARP="${FNACC_THREADS_PER_WARP:-}"
-NUM_STAGES="${FNACC_NUM_STAGES:-3}"
-F64_MATMUL_STRATEGY="${FNACC_F64_MATMUL_STRATEGY:-reduce}"
+ACCELERATOR_TARGET="${TILEOFFLOAD_TARGET:-cuda}"
+GPU_ARCH="${TILEOFFLOAD_GPU_ARCH:-}"
+SM="${TILEOFFLOAD_SM:-sm_90a}"
+BACKEND="${TILEOFFLOAD_BACKEND:-auto}"
+FALLBACK_BACKEND="${TILEOFFLOAD_FALLBACK_BACKEND:-triton}"
+ALLOW_BACKEND_FALLBACK="${TILEOFFLOAD_ALLOW_BACKEND_FALLBACK:-true}"
+LAUNCH_ABI="${TILEOFFLOAD_LAUNCH_ABI:-3}"
+NUM_WARPS="${TILEOFFLOAD_NUM_WARPS:-1}"
+THREADS_PER_WARP="${TILEOFFLOAD_THREADS_PER_WARP:-}"
+NUM_STAGES="${TILEOFFLOAD_NUM_STAGES:-3}"
+F64_MATMUL_STRATEGY="${TILEOFFLOAD_F64_MATMUL_STRATEGY:-reduce}"
 CUDA_LIB_DIR="${CUDA_LIB_DIR:-}"
-CUDA_LIBDEVICE="${FNACC_CUDA_LIBDEVICE:-}"
+CUDA_LIBDEVICE="${TILEOFFLOAD_CUDA_LIBDEVICE:-}"
 ROCM_PATH="${ROCM_PATH:-/opt/rocm}"
-ROCM_DEVICE_LIB_DIR="${FNACC_ROCM_DEVICE_LIB_DIR:-}"
-HIP_LIB_DIR="${FNACC_HIP_LIB_DIR:-}"
-WORKDIR_PARENT="${FNACC_WORKDIR:-}"
+ROCM_DEVICE_LIB_DIR="${TILEOFFLOAD_ROCM_DEVICE_LIB_DIR:-}"
+HIP_LIB_DIR="${TILEOFFLOAD_HIP_LIB_DIR:-}"
+WORKDIR_PARENT="${TILEOFFLOAD_WORKDIR:-}"
 
 KEEP=0
 VERBOSE=0
@@ -1429,168 +1429,168 @@ while [[ $# -gt 0 ]]; do
       usage
       exit 0
       ;;
-    --fnacc-force)
-      FORCE_FNACC=1
+    --tileoff-force)
+      FORCE_TILEOFFLOAD=1
       shift
       ;;
-    --fnacc-disable)
-      DISABLE_FNACC=1
+    --tileoff-disable)
+      DISABLE_TILEOFFLOAD=1
       shift
       ;;
-    --fnacc-runtime)
+    --tileoff-runtime)
       FORCE_RUNTIME=1
       shift
       ;;
-    --fnacc-no-runtime)
+    --tileoff-no-runtime)
       DISABLE_RUNTIME=1
       shift
       ;;
-    --fnacc-sm|--sm)
+    --tileoff-sm|--sm)
       [[ $# -ge 2 ]] || die "$1 requires an argument"
       SM="$2"
       shift 2
       ;;
-    --fnacc-target)
+    --tileoff-target)
       [[ $# -ge 2 ]] || die "$1 requires an argument"
       ACCELERATOR_TARGET="$2"
       shift 2
       ;;
-    --fnacc-target=*)
+    --tileoff-target=*)
       ACCELERATOR_TARGET="${1#*=}"
       shift
       ;;
-    --fnacc-gpu-arch)
+    --tileoff-gpu-arch)
       [[ $# -ge 2 ]] || die "$1 requires an argument"
       GPU_ARCH="$2"
       shift 2
       ;;
-    --fnacc-gpu-arch=*)
+    --tileoff-gpu-arch=*)
       GPU_ARCH="${1#*=}"
       shift
       ;;
-    --fnacc-amd-arch)
+    --tileoff-amd-arch)
       [[ $# -ge 2 ]] || die "$1 requires an argument"
       ACCELERATOR_TARGET=hip
       GPU_ARCH="$2"
       shift 2
       ;;
-    --fnacc-amd-arch=*)
+    --tileoff-amd-arch=*)
       ACCELERATOR_TARGET=hip
       GPU_ARCH="${1#*=}"
       shift
       ;;
-    --fnacc-backend)
+    --tileoff-backend)
       [[ $# -ge 2 ]] || die "$1 requires an argument"
       BACKEND="$2"
       shift 2
       ;;
-    --fnacc-backend=*)
+    --tileoff-backend=*)
       BACKEND="${1#*=}"
       shift
       ;;
-    --fnacc-fallback-backend)
+    --tileoff-fallback-backend)
       [[ $# -ge 2 ]] || die "$1 requires an argument"
       FALLBACK_BACKEND="$2"
       shift 2
       ;;
-    --fnacc-fallback-backend=*)
+    --tileoff-fallback-backend=*)
       FALLBACK_BACKEND="${1#*=}"
       shift
       ;;
-    --fnacc-backend-fallback)
+    --tileoff-backend-fallback)
       ALLOW_BACKEND_FALLBACK=true
       shift
       ;;
-    --fnacc-no-backend-fallback)
+    --tileoff-no-backend-fallback)
       ALLOW_BACKEND_FALLBACK=false
       shift
       ;;
-    --fnacc-launch-abi)
+    --tileoff-launch-abi)
       [[ $# -ge 2 ]] || die "$1 requires an argument"
       LAUNCH_ABI="$2"
       shift 2
       ;;
-    --fnacc-num-warps|--num-warps)
+    --tileoff-num-warps|--num-warps)
       [[ $# -ge 2 ]] || die "$1 requires an argument"
       NUM_WARPS="$2"
       shift 2
       ;;
-    --fnacc-threads-per-warp|--threads-per-warp)
+    --tileoff-threads-per-warp|--threads-per-warp)
       [[ $# -ge 2 ]] || die "$1 requires an argument"
       THREADS_PER_WARP="$2"
       shift 2
       ;;
-    --fnacc-num-stages|--num-stages)
+    --tileoff-num-stages|--num-stages)
       [[ $# -ge 2 ]] || die "$1 requires an argument"
       NUM_STAGES="$2"
       shift 2
       ;;
-    --fnacc-f64-matmul-strategy|--f64-matmul-strategy)
+    --tileoff-f64-matmul-strategy|--f64-matmul-strategy)
       [[ $# -ge 2 ]] || die "$1 requires an argument"
       F64_MATMUL_STRATEGY="$2"
       shift 2
       ;;
-    --fnacc-cuda-lib-dir|--cuda-lib-dir)
+    --tileoff-cuda-lib-dir|--cuda-lib-dir)
       [[ $# -ge 2 ]] || die "$1 requires an argument"
       CUDA_LIB_DIR="$2"
       shift 2
       ;;
-    --fnacc-cuda-libdevice|--cuda-libdevice)
+    --tileoff-cuda-libdevice|--cuda-libdevice)
       [[ $# -ge 2 ]] || die "$1 requires an argument"
       CUDA_LIBDEVICE="$2"
       shift 2
       ;;
-    --fnacc-cuda-libdevice=*|--cuda-libdevice=*)
+    --tileoff-cuda-libdevice=*|--cuda-libdevice=*)
       CUDA_LIBDEVICE="${1#*=}"
       shift
       ;;
-    --fnacc-rocm-path)
+    --tileoff-rocm-path)
       [[ $# -ge 2 ]] || die "$1 requires an argument"
       ROCM_PATH="$2"
       shift 2
       ;;
-    --fnacc-rocm-path=*)
+    --tileoff-rocm-path=*)
       ROCM_PATH="${1#*=}"
       shift
       ;;
-    --fnacc-rocm-device-lib-dir)
+    --tileoff-rocm-device-lib-dir)
       [[ $# -ge 2 ]] || die "$1 requires an argument"
       ROCM_DEVICE_LIB_DIR="$2"
       shift 2
       ;;
-    --fnacc-rocm-device-lib-dir=*)
+    --tileoff-rocm-device-lib-dir=*)
       ROCM_DEVICE_LIB_DIR="${1#*=}"
       shift
       ;;
-    --fnacc-hip-lib-dir)
+    --tileoff-hip-lib-dir)
       [[ $# -ge 2 ]] || die "$1 requires an argument"
       HIP_LIB_DIR="$2"
       shift 2
       ;;
-    --fnacc-hip-lib-dir=*)
+    --tileoff-hip-lib-dir=*)
       HIP_LIB_DIR="${1#*=}"
       shift
       ;;
-    --fnacc-workdir|--workdir)
+    --tileoff-workdir|--workdir)
       [[ $# -ge 2 ]] || die "$1 requires an argument"
       WORKDIR_PARENT="$2"
       USER_WORKDIR_SET=1
       shift 2
       ;;
-    --fnacc-keep|--keep|-save-temps)
+    --tileoff-keep|--keep|-save-temps)
       KEEP=1
       [[ "$1" != "-save-temps" ]] || FLANG_ARGS+=("$1")
       shift
       ;;
-    --fnacc-verbose|--verbose)
+    --tileoff-verbose|--verbose)
       VERBOSE=1
       shift
       ;;
-    --fnacc-dry-run|--dry-run)
+    --tileoff-dry-run|--dry-run)
       DRY_RUN=1
       shift
       ;;
-    --fnacc-stop-after|--stop-after)
+    --tileoff-stop-after|--stop-after)
       [[ $# -ge 2 ]] || die "$1 requires an argument"
       STOP_AFTER="$2"
       KEEP=1
@@ -1614,7 +1614,7 @@ while [[ $# -gt 0 ]]; do
     --kernel-src|--main-src|--extra-src)
       die "$1 belongs to the restricted wrapper; pass the source filename directly"
       ;;
-    --no-embed|--runner-uses-files|--fnacc-no-embed)
+    --no-embed|--runner-uses-files|--tileoff-no-embed)
       die "$1 is incompatible with self-contained, separately linkable objects"
       ;;
     -c)
@@ -1735,10 +1735,10 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-[[ "$FORCE_FNACC" == "0" || "$DISABLE_FNACC" == "0" ]] ||
-  die "--fnacc-force and --fnacc-disable are mutually exclusive"
+[[ "$FORCE_TILEOFFLOAD" == "0" || "$DISABLE_TILEOFFLOAD" == "0" ]] ||
+  die "--tileoff-force and --tileoff-disable are mutually exclusive"
 [[ "$FORCE_RUNTIME" == "0" || "$DISABLE_RUNTIME" == "0" ]] ||
-  die "--fnacc-runtime and --fnacc-no-runtime are mutually exclusive"
+  die "--tileoff-runtime and --tileoff-no-runtime are mutually exclusive"
 
 resolve_flang
 
@@ -1760,84 +1760,84 @@ for source in "${SOURCES[@]}"; do
 done
 
 for source in "${SOURCES[@]}"; do
-  if [[ "$DISABLE_FNACC" == "1" ]]; then
-    SOURCE_IS_FNACC+=(0)
-  elif [[ "$FORCE_FNACC" == "1" ]]; then
-    [[ "$source" != "-" ]] || die "FNACC compilation from standard input is not supported"
-    SOURCE_IS_FNACC+=(1)
-  elif source_has_fnacc "$source"; then
-    SOURCE_IS_FNACC+=(1)
+  if [[ "$DISABLE_TILEOFFLOAD" == "1" ]]; then
+    SOURCE_IS_TILEOFFLOAD+=(0)
+  elif [[ "$FORCE_TILEOFFLOAD" == "1" ]]; then
+    [[ "$source" != "-" ]] || die "TileOffload compilation from standard input is not supported"
+    SOURCE_IS_TILEOFFLOAD+=(1)
+  elif source_has_tileoff "$source"; then
+    SOURCE_IS_TILEOFFLOAD+=(1)
   else
-    SOURCE_IS_FNACC+=(0)
+    SOURCE_IS_TILEOFFLOAD+=(0)
   fi
 done
 
-FNACC_SOURCE_COUNT=0
-for value in "${SOURCE_IS_FNACC[@]}"; do
-  (( FNACC_SOURCE_COUNT += value )) || true
+TILEOFFLOAD_SOURCE_COUNT=0
+for value in "${SOURCE_IS_TILEOFFLOAD[@]}"; do
+  (( TILEOFFLOAD_SOURCE_COUNT += value )) || true
 done
 
-if [[ -n "$STOP_AFTER" && "$FNACC_SOURCE_COUNT" -ne 1 ]]; then
-  die "--fnacc-stop-after requires exactly one FNACC source"
+if [[ -n "$STOP_AFTER" && "$TILEOFFLOAD_SOURCE_COUNT" -ne 1 ]]; then
+  die "--tileoff-stop-after requires exactly one TileOffload source"
 fi
 
 if [[ "$COMPILE_ONLY" == "1" && -n "$OUTPUT" && ${#SOURCES[@]} -ne 1 ]]; then
   die "cannot use -o with -c and multiple source files"
 fi
 
-if [[ "$COMPILE_ONLY" == "1" && ${#OTHER_INPUTS[@]} -gt 0 && "$FNACC_SOURCE_COUNT" -gt 0 ]]; then
+if [[ "$COMPILE_ONLY" == "1" && ${#OTHER_INPUTS[@]} -gt 0 && "$TILEOFFLOAD_SOURCE_COUNT" -gt 0 ]]; then
   die "object and library inputs are not accepted with -c"
 fi
 
-if [[ "$FNACC_SOURCE_COUNT" == "0" && "$FORCE_RUNTIME" == "0" ]]; then
+if [[ "$TILEOFFLOAD_SOURCE_COUNT" == "0" && "$FORCE_RUNTIME" == "0" ]]; then
   if [[ "$COMPILE_ONLY" == "1" ]]; then
     run "$FLANG" "${FLANG_ARGS[@]}"
     exit 0
   fi
 
   resolve_nm
-  EXISTING_FNACC=0
+  EXISTING_TILEOFFLOAD=0
   for input in "${OTHER_INPUTS[@]}"; do
-    if input_needs_fnacc_runtime "$input"; then
-      EXISTING_FNACC=1
+    if input_needs_tileoff_runtime "$input"; then
+      EXISTING_TILEOFFLOAD=1
       break
     fi
   done
-  if [[ "$EXISTING_FNACC" == "0" ]]; then
+  if [[ "$EXISTING_TILEOFFLOAD" == "0" ]]; then
     run "$FLANG" "${FLANG_ARGS[@]}"
     exit 0
   fi
 fi
 
 case "$STOP_AFTER" in
-  ""|modgen|fir|fnacc-pipeline|ttgir|llvm-mlir|llvm-ir|ptx|hsaco|device-image|embed|host-ll|host-obj|object|objects|link)
+  ""|modgen|fir|tileoff-pipeline|ttgir|llvm-mlir|llvm-ir|ptx|hsaco|device-image|embed|host-ll|host-obj|object|objects|link)
     ;;
   *)
-    die "invalid --fnacc-stop-after stage: $STOP_AFTER"
+    die "invalid --tileoff-stop-after stage: $STOP_AFTER"
     ;;
 esac
 
 case "$LAUNCH_ABI" in
   2|3) ;;
-  *) die "invalid FNACC launch ABI '$LAUNCH_ABI'; expected 2 or 3" ;;
+  *) die "invalid TileOffload launch ABI '$LAUNCH_ABI'; expected 2 or 3" ;;
 esac
 
 case "$F64_MATMUL_STRATEGY" in
   reduce|fma|dot) ;;
-  *) die "invalid FNACC F64 matmul strategy '$F64_MATMUL_STRATEGY'; expected reduce, fma, or dot" ;;
+  *) die "invalid TileOffload F64 matmul strategy '$F64_MATMUL_STRATEGY'; expected reduce, fma, or dot" ;;
 esac
 
-if (( FNACC_SOURCE_COUNT > 0 )); then
+if (( TILEOFFLOAD_SOURCE_COUNT > 0 )); then
   ALLOW_BACKEND_FALLBACK="$(normalize_bool "$ALLOW_BACKEND_FALLBACK")"
   [[ "$BACKEND" =~ ^[A-Za-z0-9][A-Za-z0-9._+-]*$ ]] ||
-    die "invalid FNACC backend name '$BACKEND'"
+    die "invalid TileOffload backend name '$BACKEND'"
   [[ "$FALLBACK_BACKEND" =~ ^[A-Za-z0-9][A-Za-z0-9._+-]*$ ]] ||
-    die "invalid FNACC fallback backend name '$FALLBACK_BACKEND'"
+    die "invalid TileOffload fallback backend name '$FALLBACK_BACKEND'"
 
   case "${ACCELERATOR_TARGET,,}" in
     cuda|nvidia) ACCELERATOR_TARGET=cuda ;;
     hip|amd|rocm) ACCELERATOR_TARGET=hip ;;
-    *) die "invalid FNACC target '$ACCELERATOR_TARGET'; expected cuda or hip" ;;
+    *) die "invalid TileOffload target '$ACCELERATOR_TARGET'; expected cuda or hip" ;;
   esac
 
   if [[ "$ACCELERATOR_TARGET" == "cuda" ]]; then
@@ -1856,7 +1856,7 @@ if (( FNACC_SOURCE_COUNT > 0 )); then
     TRITON_TARGET="cuda:$SM_NUM"
     [[ -n "$THREADS_PER_WARP" ]] || THREADS_PER_WARP=32
   else
-    [[ -n "$GPU_ARCH" ]] || GPU_ARCH="${FNACC_AMD_GPU_ARCH:-gfx90a}"
+    [[ -n "$GPU_ARCH" ]] || GPU_ARCH="${TILEOFFLOAD_AMD_GPU_ARCH:-gfx90a}"
     GPU_ARCH="${GPU_ARCH#amd:}"
     [[ "$GPU_ARCH" =~ ^gfx[0-9a-f]+$ ]] ||
       die "invalid AMD GPU architecture '$GPU_ARCH'; expected e.g. gfx90a or gfx942"
@@ -1875,7 +1875,7 @@ if (( FNACC_SOURCE_COUNT > 0 )); then
   [[ "$THREADS_PER_WARP" =~ ^[0-9]+$ ]] || die "invalid threads-per-warp value '$THREADS_PER_WARP'"
   [[ "$NUM_STAGES" =~ ^[0-9]+$ ]] || die "invalid num-stages value '$NUM_STAGES'"
   if (( ${#NUM_WARPS} > 3 || ${#THREADS_PER_WARP} > 3 || ${#NUM_STAGES} > 2 )); then
-    die "numeric FNACC launch option is outside the supported range"
+    die "numeric TileOffload launch option is outside the supported range"
   fi
 
   NUM_WARPS=$((10#$NUM_WARPS))
@@ -1887,15 +1887,15 @@ if (( FNACC_SOURCE_COUNT > 0 )); then
   (( NUM_WARPS <= 32 )) || die "num-warps must not exceed 32"
   if [[ "$ACCELERATOR_TARGET" == "cuda" ]]; then
     (( THREADS_PER_WARP == 32 )) ||
-      die "CUDA lowering requires --fnacc-threads-per-warp 32"
+      die "CUDA lowering requires --tileoff-threads-per-warp 32"
   else
     (( THREADS_PER_WARP == 32 || THREADS_PER_WARP == 64 )) ||
-      die "HIP lowering requires --fnacc-threads-per-warp 32 or 64"
+      die "HIP lowering requires --tileoff-threads-per-warp 32 or 64"
   fi
   (( NUM_STAGES > 0 && NUM_STAGES <= 16 )) || die "num-stages must be between 1 and 16"
-  [[ "$HAS_LTO" == "0" ]] || die "LTO is not supported when compiling an FNACC source"
+  [[ "$HAS_LTO" == "0" ]] || die "LTO is not supported when compiling an TileOffload source"
 
-  [[ -n "${LLVM_BUILD:-}" ]] || die "LLVM_BUILD is required for FNACC compilation"
+  [[ -n "${LLVM_BUILD:-}" ]] || die "LLVM_BUILD is required for TileOffload compilation"
   FIROPT="${FIROPT:-$LLVM_BUILD/bin/fir-opt}"
   TCO="${TCO:-$LLVM_BUILD/bin/tco}"
   CLANG="${CLANG:-$LLVM_BUILD/bin/clang}"
@@ -1915,12 +1915,12 @@ if [[ -n "$CUDA_LIB_DIR" && ! -d "$CUDA_LIB_DIR" ]]; then
   die "CUDA library directory does not exist: $CUDA_LIB_DIR"
 fi
 
-if (( FNACC_SOURCE_COUNT > 0 )) && \
+if (( TILEOFFLOAD_SOURCE_COUNT > 0 )) && \
     [[ "$ACCELERATOR_TARGET" == "cuda" && -n "$CUDA_LIBDEVICE" && ! -f "$CUDA_LIBDEVICE" ]]; then
   die "CUDA libdevice bitcode does not exist: $CUDA_LIBDEVICE"
 fi
 
-if (( FNACC_SOURCE_COUNT > 0 )) && [[ "$ACCELERATOR_TARGET" == "hip" ]]; then
+if (( TILEOFFLOAD_SOURCE_COUNT > 0 )) && [[ "$ACCELERATOR_TARGET" == "hip" ]]; then
   [[ -d "$ROCM_PATH" ]] || die "ROCm installation does not exist: $ROCM_PATH"
   if [[ -n "$ROCM_DEVICE_LIB_DIR" && ! -d "$ROCM_DEVICE_LIB_DIR" ]]; then
     die "ROCm device-library directory does not exist: $ROCM_DEVICE_LIB_DIR"
@@ -1935,7 +1935,7 @@ if (( FNACC_SOURCE_COUNT > 0 )) && [[ "$ACCELERATOR_TARGET" == "hip" ]]; then
 fi
 
 if [[ -n "$WORKDIR_PARENT" && "$WORKDIR_PARENT" =~ [[:space:]] ]]; then
-  die "FNACC work directories must not contain whitespace because MLIR pass options cannot represent it safely"
+  die "TileOffload work directories must not contain whitespace because MLIR pass options cannot represent it safely"
 fi
 
 if [[ -n "$OUTPUT" ]]; then
@@ -1948,9 +1948,9 @@ fi
 
 if [[ "$DRY_RUN" == "1" ]]; then
   if [[ -n "$WORKDIR_PARENT" ]]; then
-    WORKDIR="$WORKDIR_PARENT/fnacc-${WORK_BASE}.dry-run"
+    WORKDIR="$WORKDIR_PARENT/tileoff-${WORK_BASE}.dry-run"
   else
-    WORKDIR="${TMPDIR:-$PWD}/fnacc-${WORK_BASE}.dry-run"
+    WORKDIR="${TMPDIR:-$PWD}/tileoff-${WORK_BASE}.dry-run"
   fi
 else
   if [[ -z "$WORKDIR_PARENT" ]]; then
@@ -1962,7 +1962,7 @@ else
   [[ ! "$WORKDIR_PARENT" =~ [[:space:]] ]] ||
     die "no writable whitespace-free temporary directory is available"
   mkdir -p "$WORKDIR_PARENT"
-  WORKDIR="$(mktemp -d "$WORKDIR_PARENT/fnacc-${WORK_BASE}.XXXXXX")"
+  WORKDIR="$(mktemp -d "$WORKDIR_PARENT/tileoff-${WORK_BASE}.XXXXXX")"
 fi
 
 OBJ_DIR="$WORKDIR/obj"
@@ -1977,11 +1977,11 @@ cleanup() {
 }
 trap cleanup EXIT
 
-if ((FNACC_SOURCE_COUNT > 0)); then
+if ((TILEOFFLOAD_SOURCE_COUNT > 0)); then
   resolve_flang_intrinsic_modules "${COMPILE_FLAGS[@]}"
 fi
 
-if (( FNACC_SOURCE_COUNT > 0 )) && [[ "$DRY_RUN" != "1" ]]; then
+if (( TILEOFFLOAD_SOURCE_COUNT > 0 )) && [[ "$DRY_RUN" != "1" ]]; then
   write_toolchain_manifest "$WORKDIR/toolchain.txt"
 fi
 
@@ -1995,7 +1995,7 @@ compile_plain_source() {
   fi
 }
 
-compile_fnacc_source() {
+compile_tileoff_source() {
   local source="$1"
   local output="$2"
   local stem source_hash base_path
@@ -2004,8 +2004,8 @@ compile_fnacc_source() {
   local effective_num_warps count
   local data_only=0
   local BACKEND="$BACKEND"
-  local CUDA_TILE_TRANSLATE="${FNACC_CUDA_TILE_TRANSLATE:-cuda-tile-translate}"
-  local TILEIRAS="${FNACC_TILEIRAS:-tileiras}"
+  local CUDA_TILE_TRANSLATE="${TILEOFFLOAD_CUDA_TILE_TRANSLATE:-cuda-tile-translate}"
+  local TILEIRAS="${TILEOFFLOAD_TILEIRAS:-tileiras}"
   if [[ "$BACKEND" == "cuda-tile" ]]; then
     local tile_target_supported=0
 
@@ -2045,7 +2045,7 @@ compile_fnacc_source() {
   embed_c="$base_path.embedded.c"
   embed_obj="$base_path.embedded.o"
 
-  log "FNACC compile: $source -> $output"
+  log "TileOffload compile: $source -> $output"
   log "  host launch ABI: $LAUNCH_ABI"
   log "  target: $ACCELERATOR_TARGET:$GPU_ARCH, backend=$BACKEND, fallback=$FALLBACK_BACKEND, warps=$NUM_WARPS, threads/subgroup=$THREADS_PER_WARP, stages=$NUM_STAGES"
 
@@ -2062,9 +2062,9 @@ compile_fnacc_source() {
   fi
   maybe_stop fir
 
-  log "  [3/10] Run FNACC pipeline"
-  run env "FNACC_KERNEL_BUNDLE_KEY=$source_hash" "$FIROPT" \
-    "--fnacc-pipeline=ttir-output=$ttir json-output=$json \
+  log "  [3/10] Run TileOffload pipeline"
+  run env "TILEOFFLOAD_KERNEL_BUNDLE_KEY=$source_hash" "$FIROPT" \
+    "--tileoff-pipeline=ttir-output=$ttir json-output=$json \
       emit-fortran-aliases=true \
       launch-abi=$LAUNCH_ABI \
       num-warps=$NUM_WARPS \
@@ -2084,11 +2084,11 @@ compile_fnacc_source() {
     validate_kernel_json "$json"
     count="$(kernel_json_count "$json")"
     if (( count == 0 )); then
-      if fir_has_fnacc_launch "$fir" || source_has_fnacc_parallel "$source"; then
-        if [[ "${FNACC_ALLOW_EMPTY_KERNELS:-0}" != "1" ]]; then
-          die "no kernels were emitted into $json even though an FNACC parallel launch was present; set FNACC_ALLOW_EMPTY_KERNELS=1 to override this check"
+      if fir_has_tileoff_launch "$fir" || source_has_tileoff_parallel "$source"; then
+        if [[ "${TILEOFFLOAD_ALLOW_EMPTY_KERNELS:-0}" != "1" ]]; then
+          die "no kernels were emitted into $json even though an TileOffload parallel launch was present; set TILEOFFLOAD_ALLOW_EMPTY_KERNELS=1 to override this check"
         fi
-        warn "accepting an empty kernel bundle despite an FNACC parallel launch"
+        warn "accepting an empty kernel bundle despite an TileOffload parallel launch"
       fi
       data_only=1
     else
@@ -2133,10 +2133,10 @@ compile_fnacc_source() {
       used_backend_fallback=false
     fi
   fi
-  maybe_stop fnacc-pipeline
+  maybe_stop tileoff-pipeline
 
   if (( data_only )); then
-    log "  no device kernels: emitting a host-only FNACC object"
+    log "  no device kernels: emitting a host-only TileOffload object"
     log "  [4-9/10] Skip device code generation and kernel embedding"
     maybe_stop ttgir
     maybe_stop llvm-mlir
@@ -2150,7 +2150,7 @@ compile_fnacc_source() {
     maybe_stop host-ll
 
     run "$CLANG" "${HOST_CODEGEN_FLAGS[@]}" -c "$host_ll" -o "$output"
-    test -s "$output" || die "FNACC object was not generated: $output"
+    test -s "$output" || die "TileOffload object was not generated: $output"
     maybe_stop host-obj
     maybe_stop object
     return
@@ -2243,11 +2243,11 @@ compile_fnacc_source() {
       kernel_ttir="$(manifest_get "$manifest" "$ki" ttir)"
       kernel_ttgir="$(manifest_get "$manifest" "$ki" ttgir)"
       if [[ "$ACCELERATOR_TARGET" == "hip" &&
-            -n "${FNACC_HIP_TTIR_TO_TTGIR_PASSES:-}" ]]; then
-        mapfile -t TTIR_TO_TTGIR_PASSES < <(split_pass_pipeline "$FNACC_HIP_TTIR_TO_TTGIR_PASSES")
+            -n "${TILEOFFLOAD_HIP_TTIR_TO_TTGIR_PASSES:-}" ]]; then
+        mapfile -t TTIR_TO_TTGIR_PASSES < <(split_pass_pipeline "$TILEOFFLOAD_HIP_TTIR_TO_TTGIR_PASSES")
         run "$TRITON_OPT" "$kernel_ttir" "${TTIR_TO_TTGIR_PASSES[@]}" -o "$kernel_ttgir"
-      elif [[ -n "${FNACC_TTIR_TO_TTGIR_PASSES:-}" ]]; then
-        mapfile -t TTIR_TO_TTGIR_PASSES < <(split_pass_pipeline "$FNACC_TTIR_TO_TTGIR_PASSES")
+      elif [[ -n "${TILEOFFLOAD_TTIR_TO_TTGIR_PASSES:-}" ]]; then
+        mapfile -t TTIR_TO_TTGIR_PASSES < <(split_pass_pipeline "$TILEOFFLOAD_TTIR_TO_TTGIR_PASSES")
         run "$TRITON_OPT" "$kernel_ttir" "${TTIR_TO_TTGIR_PASSES[@]}" -o "$kernel_ttgir"
       elif [[ "$ACCELERATOR_TARGET" == "hip" ]]; then
         run "$TRITON_OPT" "$kernel_ttir" \
@@ -2276,11 +2276,11 @@ compile_fnacc_source() {
       kernel_ttgir="$(manifest_get "$manifest" "$ki" ttgir)"
       kernel_llvm_mlir="$(manifest_get "$manifest" "$ki" llvm_mlir)"
       if [[ "$ACCELERATOR_TARGET" == "hip" &&
-            -n "${FNACC_HIP_TTGIR_TO_LLVM_PASSES:-}" ]]; then
-        mapfile -t TTGIR_TO_LLVM_PASSES < <(split_pass_pipeline "$FNACC_HIP_TTGIR_TO_LLVM_PASSES")
+            -n "${TILEOFFLOAD_HIP_TTGIR_TO_LLVM_PASSES:-}" ]]; then
+        mapfile -t TTGIR_TO_LLVM_PASSES < <(split_pass_pipeline "$TILEOFFLOAD_HIP_TTGIR_TO_LLVM_PASSES")
         run "$TRITON_OPT" "$kernel_ttgir" "${TTGIR_TO_LLVM_PASSES[@]}" -o "$kernel_llvm_mlir"
-      elif [[ -n "${FNACC_TTGIR_TO_LLVM_PASSES:-}" ]]; then
-        mapfile -t TTGIR_TO_LLVM_PASSES < <(split_pass_pipeline "$FNACC_TTGIR_TO_LLVM_PASSES")
+      elif [[ -n "${TILEOFFLOAD_TTGIR_TO_LLVM_PASSES:-}" ]]; then
+        mapfile -t TTGIR_TO_LLVM_PASSES < <(split_pass_pipeline "$TILEOFFLOAD_TTGIR_TO_LLVM_PASSES")
         run "$TRITON_OPT" "$kernel_ttgir" "${TTGIR_TO_LLVM_PASSES[@]}" -o "$kernel_llvm_mlir"
       elif [[ "$ACCELERATOR_TARGET" == "hip" ]]; then
         run "$TRITON_OPT" "$kernel_ttgir" \
@@ -2426,7 +2426,7 @@ compile_fnacc_source() {
   run "$CLANG" "${HOST_RELOCATE_FLAGS[@]}" -nostdlib -r \
     "$host_obj" "$embed_obj" -o "$output"
   if [[ "$DRY_RUN" != "1" ]]; then
-    test -s "$output" || die "FNACC object was not generated: $output"
+    test -s "$output" || die "TileOffload object was not generated: $output"
   fi
   maybe_stop object
 }
@@ -2449,8 +2449,8 @@ for index in "${!SOURCES[@]}"; do
   fi
   SOURCE_OBJECTS[$index]="$object"
 
-  if [[ "${SOURCE_IS_FNACC[$index]}" == "1" ]]; then
-    compile_fnacc_source "$source" "$object"
+  if [[ "${SOURCE_IS_TILEOFFLOAD[$index]}" == "1" ]]; then
+    compile_tileoff_source "$source" "$object"
   else
     compile_plain_source "$source" "$object"
   fi
@@ -2471,7 +2471,7 @@ fi
 
 FINAL_LINK_ARGS=()
 for item in "${LINK_SEQUENCE[@]}"; do
-  if [[ "$item" =~ ^__FNACC_SOURCE_([0-9]+)__$ ]]; then
+  if [[ "$item" =~ ^__TILEOFFLOAD_SOURCE_([0-9]+)__$ ]]; then
     index="${BASH_REMATCH[1]}"
     FINAL_LINK_ARGS+=("${SOURCE_OBJECTS[$index]}")
   else
@@ -2480,24 +2480,24 @@ for item in "${LINK_SEQUENCE[@]}"; do
 done
 
 resolve_nm
-NEEDS_FNACC_RUNTIME="$FORCE_RUNTIME"
-if (( FNACC_SOURCE_COUNT > 0 )); then
-  NEEDS_FNACC_RUNTIME=1
+NEEDS_TILEOFFLOAD_RUNTIME="$FORCE_RUNTIME"
+if (( TILEOFFLOAD_SOURCE_COUNT > 0 )); then
+  NEEDS_TILEOFFLOAD_RUNTIME=1
 fi
 
 for input in "${OTHER_INPUTS[@]}"; do
-  if input_needs_fnacc_runtime "$input"; then
-    NEEDS_FNACC_RUNTIME=1
+  if input_needs_tileoff_runtime "$input"; then
+    NEEDS_TILEOFFLOAD_RUNTIME=1
   fi
 done
 
 RUNTIME_LINK_FLAGS=()
-if [[ "$NEEDS_FNACC_RUNTIME" == "1" && "$DISABLE_RUNTIME" != "1" && "$RELOCATABLE_LINK" != "1" ]]; then
-  [[ -n "${LLVM_BUILD:-}" ]] || die "LLVM_BUILD is required to link the FNACC runtime"
+if [[ "$NEEDS_TILEOFFLOAD_RUNTIME" == "1" && "$DISABLE_RUNTIME" != "1" && "$RELOCATABLE_LINK" != "1" ]]; then
+  [[ -n "${LLVM_BUILD:-}" ]] || die "LLVM_BUILD is required to link the TileOffload runtime"
   case "${ACCELERATOR_TARGET,,}" in
     hip|amd|rocm)
       ACCELERATOR_TARGET=hip
-      RUNTIME_LINK_FLAGS+=("-L$LLVM_BUILD/lib" -lFortranFNACCRuntimeHIP)
+      RUNTIME_LINK_FLAGS+=("-L$LLVM_BUILD/lib" -lFortranTileOffloadRuntimeHIP)
       if [[ -n "$HIP_LIB_DIR" ]]; then
         RUNTIME_LINK_FLAGS+=("-L$HIP_LIB_DIR" "-Wl,-rpath,$HIP_LIB_DIR")
       fi
@@ -2505,21 +2505,21 @@ if [[ "$NEEDS_FNACC_RUNTIME" == "1" && "$DISABLE_RUNTIME" != "1" && "$RELOCATABL
       ;;
     cuda|nvidia)
       ACCELERATOR_TARGET=cuda
-      RUNTIME_LINK_FLAGS+=("-L$LLVM_BUILD/lib" -lFortranFNACCRuntime)
+      RUNTIME_LINK_FLAGS+=("-L$LLVM_BUILD/lib" -lFortranTileOffloadRuntime)
       if [[ -n "$CUDA_LIB_DIR" ]]; then
         RUNTIME_LINK_FLAGS+=("-L$CUDA_LIB_DIR" "-Wl,-rpath,$CUDA_LIB_DIR")
       fi
       RUNTIME_LINK_FLAGS+=(-lcuda -lstdc++ "-Wl,-rpath,$LLVM_BUILD/lib")
       ;;
-    *) die "invalid FNACC target '$ACCELERATOR_TARGET'; expected cuda or hip" ;;
+    *) die "invalid TileOffload target '$ACCELERATOR_TARGET'; expected cuda or hip" ;;
   esac
 fi
 
 [[ -n "$OUTPUT" ]] || OUTPUT="a.out"
 
 log "link: ${#SOURCES[@]} source object(s), ${#OTHER_INPUTS[@]} other input(s) -> $OUTPUT"
-if [[ "$NEEDS_FNACC_RUNTIME" == "1" ]]; then
-  log "FNACC runtime: $([[ "$DISABLE_RUNTIME" == "1" || "$RELOCATABLE_LINK" == "1" ]] && echo deferred || echo enabled)"
+if [[ "$NEEDS_TILEOFFLOAD_RUNTIME" == "1" ]]; then
+  log "TileOffload runtime: $([[ "$DISABLE_RUNTIME" == "1" || "$RELOCATABLE_LINK" == "1" ]] && echo deferred || echo enabled)"
 fi
 
 run "$FLANG" \
@@ -2537,7 +2537,7 @@ log "done"
 log "output: $OUTPUT"
 if [[ "$KEEP" == "1" ]]; then
   log "workdir kept: $WORKDIR"
-  if (( FNACC_SOURCE_COUNT > 0 )); then
+  if (( TILEOFFLOAD_SOURCE_COUNT > 0 )); then
     log "toolchain: $WORKDIR/toolchain.txt"
   fi
 fi

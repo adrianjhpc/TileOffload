@@ -1,6 +1,6 @@
-program reduction_dot_fnacc
+program reduction_dot_TileOffload
   use bench_utils
-  use fnacc_reduction_dot_kernel
+  use tileoff_reduction_dot_kernel
   implicit none
 
   integer(8) :: n
@@ -29,12 +29,12 @@ program reduction_dot_fnacc
   call reduction_dot_compute(a, b, result)
   call reduction_dot_compute(a, b, result)
 
-  !$fnacc wait
+  !$tileoff wait
   t0 = wall_time()
   do r = 1, reps
     call reduction_dot_compute(a, b, result)
   end do
-  !$fnacc wait
+  !$tileoff wait
   t1 = wall_time()
 
   expected = 0.0d0
@@ -57,6 +57,6 @@ program reduction_dot_fnacc
   elapsed = t1 - t0
   bytes_per_rep = 2.0d0 * real(n, 8) * 4.0d0
 
-  call print_result("fnacc_reduction_dot", n, 1_8, reps, elapsed, bytes_per_rep, errors)
+  call print_result("tileoff_reduction_dot", n, 1_8, reps, elapsed, bytes_per_rep, errors)
 end program
 

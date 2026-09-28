@@ -1,4 +1,4 @@
-module fnacc_reduction_validation_kernels
+module tileoff_reduction_validation_kernels
   use, intrinsic :: iso_fortran_env, only: real32, real64
   implicit none
 
@@ -11,7 +11,7 @@ contains
     integer :: i
 
     result = 0.0_real32
-    !$fnacc parallel tile(256) reduction(+:result)
+    !$tileoff parallel tile(256) reduction(+:result)
     do i = 1, n
       result = result + a(i)
     end do
@@ -24,7 +24,7 @@ contains
     integer :: i
 
     result = 0.0_real32
-    !$fnacc parallel tile(256) reduction(+:result)
+    !$tileoff parallel tile(256) reduction(+:result)
     do i = 1, n
       result = result + a(i) * b(i)
     end do
@@ -37,7 +37,7 @@ contains
     integer :: i
 
     result = 1.0_real32
-    !$fnacc parallel tile(256) reduction(*:result)
+    !$tileoff parallel tile(256) reduction(*:result)
     do i = 1, n
       result = result * a(i)
     end do
@@ -50,7 +50,7 @@ contains
     integer :: i
 
     result = huge(result)
-    !$fnacc parallel tile(256) reduction(min:result)
+    !$tileoff parallel tile(256) reduction(min:result)
     do i = 1, n
       result = min(result, a(i))
     end do
@@ -63,7 +63,7 @@ contains
     integer :: i
 
     result = -huge(result)
-    !$fnacc parallel tile(256) reduction(max:result)
+    !$tileoff parallel tile(256) reduction(max:result)
     do i = 1, n
       result = max(result, a(i))
     end do
@@ -76,7 +76,7 @@ contains
     integer :: i
 
     result = 0.0_real64
-    !$fnacc parallel tile(256) reduction(+:result)
+    !$tileoff parallel tile(256) reduction(+:result)
     do i = 1, n
       result = result + a(i)
     end do
@@ -89,7 +89,7 @@ contains
     integer :: i
 
     result = 0.0_real64
-    !$fnacc parallel tile(256) reduction(+:result)
+    !$tileoff parallel tile(256) reduction(+:result)
     do i = 1, n
       result = result + a(i) * b(i)
     end do
@@ -102,7 +102,7 @@ contains
     integer :: i
 
     result = 1.0_real64
-    !$fnacc parallel tile(256) reduction(*:result)
+    !$tileoff parallel tile(256) reduction(*:result)
     do i = 1, n
       result = result * a(i)
     end do
@@ -115,7 +115,7 @@ contains
     integer :: i
 
     result = huge(result)
-    !$fnacc parallel tile(256) reduction(min:result)
+    !$tileoff parallel tile(256) reduction(min:result)
     do i = 1, n
       result = min(result, a(i))
     end do
@@ -128,18 +128,18 @@ contains
     integer :: i
 
     result = -huge(result)
-    !$fnacc parallel tile(256) reduction(max:result)
+    !$tileoff parallel tile(256) reduction(max:result)
     do i = 1, n
       result = max(result, a(i))
     end do
   end subroutine max_f64
 
-end module fnacc_reduction_validation_kernels
+end module tileoff_reduction_validation_kernels
 
-program fnacc_reduction_validation
+program tileoff_reduction_validation
   use, intrinsic :: iso_c_binding, only: c_int64_t
   use, intrinsic :: iso_fortran_env, only: real32, real64
-  use fnacc_reduction_validation_kernels
+  use tileoff_reduction_validation_kernels
   implicit none
 
   integer, parameter :: cases(15) = [ &
@@ -163,7 +163,7 @@ program fnacc_reduction_validation
         partial_allocations, partial_growths, partial_reuses, &
         partial_capacity_bytes, scratch_allocations, scratch_growths, &
         scratch_reuses, scratch_capacity_bytes) &
-        bind(C, name="__fnacc_get_reduction_workspace_stats_v1")
+        bind(C, name="__tileoff_get_reduction_workspace_stats_v1")
       import :: c_int64_t
       integer(c_int64_t), intent(out) :: primary_launches, stage_launches
       integer(c_int64_t), intent(out) :: partial_allocations, partial_growths
@@ -271,11 +271,11 @@ program fnacc_reduction_validation
       scratch_capacity_bytes, failures)
 
   if (failures /= 0) then
-    write(*, '(a,i0)') "FNACC reduction validation: FAIL, failures=", failures
+    write(*, '(a,i0)') "TileOffload reduction validation: FAIL, failures=", failures
     error stop 1
   end if
 
-  write(*, '(a)') "FNACC reduction validation: PASS"
+  write(*, '(a)') "TileOffload reduction validation: PASS"
   write(*, '(a,i0,a,i0)') "  launches: primary=", primary_launches, &
       " stage=", stage_launches
   write(*, '(a,i0,a,i0,a,i0,a,i0)') "  partials: alloc=", &
@@ -399,4 +399,4 @@ contains
     end if
   end subroutine require_stat
 
-end program fnacc_reduction_validation
+end program tileoff_reduction_validation

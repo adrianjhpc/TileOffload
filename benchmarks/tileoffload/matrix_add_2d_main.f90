@@ -1,6 +1,6 @@
-program matrix_add_2d_fnacc
+program matrix_add_2d_TileOffload
   use bench_utils
-  use fnacc_matrix_add_2d_kernel
+  use tileoff_matrix_add_2d_kernel
   implicit none
 
   integer(8) :: n, m
@@ -31,12 +31,12 @@ program matrix_add_2d_fnacc
   call matrix_add_2d_compute(a, b, c)
   call matrix_add_2d_compute(a, b, c)
 
-  !$fnacc wait
+  !$tileoff wait
   t0 = wall_time()
   do r = 1, reps
     call matrix_add_2d_compute(a, b, c)
   end do
-  !$fnacc wait
+  !$tileoff wait
   t1 = wall_time()
 
   call matrix_add_2d_fetch(c)
@@ -55,6 +55,6 @@ program matrix_add_2d_fnacc
   elapsed = t1 - t0
   bytes_per_rep = 3.0d0 * real(n * m, 8) * 4.0d0
 
-  call print_result("fnacc_matrix_add_2d", n, m, reps, elapsed, bytes_per_rep, errors)
+  call print_result("tileoff_matrix_add_2d", n, m, reps, elapsed, bytes_per_rep, errors)
 end program
 

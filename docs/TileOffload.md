@@ -1,6 +1,6 @@
-# FNACC Documentation
+# TileOffload Documentation
 
-FNACC is an experimental Flang extension for recognising selected Fortran loop
+TileOffload is an experimental Flang extension for recognising selected Fortran loop
 kernels and lowering them through an accelerator backend. The current prototype
 uses a Triton/CUDA path, but the name is intended to be broader than GPU-only
 offload.
@@ -8,9 +8,9 @@ offload.
 The feature is split into two layers:
 
 1. **Compiler-side support inside Flang**
-   - parses `!$fnacc` directives;
-   - constructs FNACC parse-tree nodes;
-   - lowers to `fnacc.*` FIR/MLIR operations;
+   - parses `!$tileoff` directives;
+   - constructs TileOffload parse-tree nodes;
+   - lowers to `TileOffload.*` FIR/MLIR operations;
    - emits Triton TTIR and JSON kernel metadata;
    - lowers host-side operations to runtime calls.
 
@@ -18,7 +18,7 @@ The feature is split into two layers:
    - invokes Triton tools;
    - translates TTIR to PTX;
    - compiles transformed host FIR;
-   - links the FNACC runtime;
+   - links the TileOffload runtime;
    - sets runtime environment variables.
 
 This repository provides layer 2.
@@ -30,7 +30,7 @@ This repository provides layer 2.
 ### Parallel loop directive
 
 ```fortran
-!$fnacc parallel tile(128)
+!$tileoff parallel tile(128)
 do i = 1, n
   c(i) = a(i) + b(i)
 end do
@@ -39,7 +39,7 @@ end do
 ### Parallel loop directive with `PACK` clauses
 
 ```fortran
-!$fnacc parallel tile(128) pack(a:device, c:device)
+!$tileoff parallel tile(128) pack(a:device, c:device)
 do i = 1, n
   c(i) = a(i) + b(i)
 end do
@@ -61,16 +61,16 @@ pack(a:device, c:device)
 ### Standalone data-management directives
 
 ```fortran
-!$fnacc update host(c)
-!$fnacc update device(a)
-!$fnacc release(a, c)
-!$fnacc release all
+!$tileoff update host(c)
+!$tileoff update device(a)
+!$tileoff release(a, c)
+!$tileoff release all
 ```
 
 The following spelling is also accepted:
 
 ```fortran
-!$fnacc release_all
+!$tileoff release_all
 ```
 
 ---
@@ -83,13 +83,13 @@ subroutine compute_add(n, a, b, c)
   real :: a(n), b(n), c(n)
   integer :: i
 
-  !$fnacc parallel tile(128) pack(a:device, b:device, c:device)
+  !$tileoff parallel tile(128) pack(a:device, b:device, c:device)
   do i = 1, n
     c(i) = a(i) + b(i)
   end do
 
-  !$fnacc update host(c)
-  !$fnacc release all
+  !$tileoff update host(c)
+  !$tileoff release all
 end subroutine
 ```
 
@@ -187,11 +187,11 @@ The current generated indexing assumes normal Fortran column-major storage.
 Data directives such as:
 
 ```fortran
-!$fnacc update device(a)
+!$tileoff update device(a)
 ```
 
 operate on runtime cache entries. If a variable has never been seen by a
-previous FNACC launch or allocation path, the runtime may not know its size and
+previous TileOffload launch or allocation path, the runtime may not know its size and
 may ignore the update.
 
 This is a known limitation of the current pointer-only runtime ABI.
@@ -203,7 +203,7 @@ This is a known limitation of the current pointer-only runtime ABI.
 The wrapper currently performs the following high-level pipeline:
 
 1. Compile Fortran source to FIR.
-2. Run the combined FNACC `fir-opt` pipeline.
+2. Run the combined TileOffload `fir-opt` pipeline.
 3. Lower emitted Triton TTIR to Triton GPU IR.
 4. Lower Triton GPU IR to LLVM MLIR.
 5. Translate LLVM MLIR to LLVM IR.
@@ -211,13 +211,13 @@ The wrapper currently performs the following high-level pipeline:
 7. Compile transformed host FIR to LLVM IR.
 8. Compile host LLVM IR to an object file.
 9. Compile the Fortran main program.
-10. Link the final executable against the FNACC runtime and CUDA driver.
+10. Link the final executable against the TileOffload runtime and CUDA driver.
 
-The key FNACC compiler step is:
+The key TileOffload compiler step is:
 
 ```bash
 fir-opt \
-  --fnacc-pipeline="ttir-output=fnacc_kernels.ttir json-output=fnacc_kernels.json emit-fortran-aliases=true" \
+  --TileOffload-pipeline="ttir-output=tileoff_kernels.ttir json-output=tileoff_kernels.json emit-fortran-aliases=true" \
   input.fir \
   -o input.host.fir
 ```
@@ -228,35 +228,35 @@ fir-opt \
 
 The current runtime uses external files for kernel code and metadata.
 
-### `FNACC_PTX`
+### `tileoff_PTX`
 
 Path to the generated PTX file.
 
 ```bash
-export FNACC_PTX=fnacc_kernels.ptx
+export tileoff_PTX=tileoff_kernels.ptx
 ```
 
-### `FNACC_KERNELS_JSON`
+### `tileoff_KERNELS_JSON`
 
 Path to the generated JSON kernel metadata.
 
 ```bash
-export FNACC_KERNELS_JSON=fnacc_kernels.json
+export tileoff_KERNELS_JSON=tileoff_kernels.json
 ```
 
-### `FNACC_DEBUG`
+### `tileoff_DEBUG`
 
 Enable runtime debug logging.
 
 ```bash
-export FNACC_DEBUG=1
+export tileoff_DEBUG=1
 ```
 
 ---
 
 ## Current limitations
 
-FNACC is experimental. Current limitations include:
+TileOffload is experimental. Current limitations include:
 
 - only selected elementwise loop kernels are recognised;
 - `real` / `f32` is the primary supported numeric type;
@@ -280,7 +280,7 @@ tool manually.
 Example:
 
 ```bash
-./bin/fnacc-flang \
+./bin/TileOffload-flang \
   --kernel-src examples/vector-add/kernel.f90 \
   --main-src examples/vector-add/main.f90 \
   --workdir build/vector-add \
@@ -297,6 +297,6 @@ Run the generated launcher:
 Enable runtime debug output:
 
 ```bash
-FNACC_DEBUG=1 ./build/vector-add/vector-add.run
+tileoff_DEBUG=1 ./build/vector-add/vector-add.run
 ```
 

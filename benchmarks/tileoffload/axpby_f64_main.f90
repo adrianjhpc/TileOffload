@@ -1,6 +1,6 @@
-program axpby_f64_fnacc
+program axpby_f64_TileOffload
   use bench_utils
-  use fnacc_axpby_f64_kernel
+  use tileoff_axpby_f64_kernel
   implicit none
 
   integer(8) :: n
@@ -31,12 +31,12 @@ program axpby_f64_fnacc
   call axpby_f64_compute(alpha, beta, a, b, c)
   call axpby_f64_compute(alpha, beta, a, b, c)
 
-  !$fnacc wait
+  !$tileoff wait
   t0 = wall_time()
   do r = 1, reps
     call axpby_f64_compute(alpha, beta, a, b, c)
   end do
-  !$fnacc wait
+  !$tileoff wait
   t1 = wall_time()
 
   call axpby_f64_fetch(c)
@@ -52,6 +52,6 @@ program axpby_f64_fnacc
   elapsed = t1 - t0
   bytes_per_rep = 3.0d0 * real(n, 8) * real(storage_size(a(1))/8, 8)
 
-  call print_result("fnacc_axpby_f64", n, 1_8, reps, elapsed, bytes_per_rep, errors)
+  call print_result("tileoff_axpby_f64", n, 1_8, reps, elapsed, bytes_per_rep, errors)
 end program
 

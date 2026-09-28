@@ -54,8 +54,8 @@ def runner_is_usable(runner: Path) -> bool:
     return is_executable(target)
 
 
-def find_fnacc_side_files(exe: Path):
-    """Find local FNACC PTX/JSON files next to the direct executable.
+def find_tileoff_side_files(exe: Path):
+    """Find local TileOffload PTX/JSON files next to the direct executable.
 
     Supported layouts:
 
@@ -66,8 +66,8 @@ def find_fnacc_side_files(exe: Path):
       Per-kernel PTX:
         foo.kernels.json
         foo.kernels.split/
-          fnacc_kernel_0.ptx
-          fnacc_kernel_1.ptx
+          tileoff_kernel_0.ptx
+          tileoff_kernel_1.ptx
     """
     directory = exe.parent
     stem = exe.name
@@ -120,13 +120,13 @@ def find_fnacc_side_files(exe: Path):
 def choose_exe(path: Path, backend: str):
     """Choose executable path and return metadata.
 
-    For FnACC:
+    For TileOffload:
       - prefer .run only if it is not stale;
-      - otherwise use the direct executable and set FNACC_PTX/JSON later.
+      - otherwise use the direct executable and set tileoff_PTX/JSON later.
     """
     uses_runner = False
 
-    if backend == "fnacc":
+    if backend == "TileOffload":
         runner = Path(str(path) + ".run")
         if runner_is_usable(runner):
             return runner, True
@@ -134,7 +134,7 @@ def choose_exe(path: Path, backend: str):
         if runner.exists():
             target = runner_target_path(runner)
             print(
-                f"warning: ignoring stale FnACC runner {runner}; "
+                f"warning: ignoring stale TileOffload runner {runner}; "
                 f"wrapper target is {target}",
                 flush=True,
             )
@@ -286,99 +286,99 @@ def collect_targets(
     targets_2d = []
 
     # ------------------------------------------------------------------ #
-    # FnACC
+    # TileOffload
     # ------------------------------------------------------------------ #
 
     maybe_add(
         targets_1d,
         "vector_add",
-        "fnacc",
-        "fnacc_vector_add",
-        build / "benchmarks/fnacc/fnacc-vector-add/fnacc-vector-add",
+        "TileOffload",
+        "tileoff_vector_add",
+        build / "benchmarks/TileOffload/TileOffload-vector-add/TileOffload-vector-add",
     )
     maybe_add(
         targets_1d,
         "vector_add_f64",
-        "fnacc",
-        "fnacc_vector_add_f64",
-        build / "benchmarks/fnacc/fnacc-vector-add-f64/fnacc-vector-add-f64",
+        "TileOffload",
+        "tileoff_vector_add_f64",
+        build / "benchmarks/TileOffload/TileOffload-vector-add-f64/TileOffload-vector-add-f64",
     )
     maybe_add(
         targets_1d,
         "saxpy",
-        "fnacc",
-        "fnacc_saxpy",
-        build / "benchmarks/fnacc/fnacc-saxpy/fnacc-saxpy",
+        "TileOffload",
+        "tileoff_saxpy",
+        build / "benchmarks/TileOffload/TileOffload-saxpy/TileOffload-saxpy",
     )
     maybe_add(
         targets_1d,
         "daxpy",
-        "fnacc",
-        "fnacc_daxpy",
-        build / "benchmarks/fnacc/fnacc-daxpy/fnacc-daxpy",
+        "TileOffload",
+        "tileoff_daxpy",
+        build / "benchmarks/TileOffload/TileOffload-daxpy/TileOffload-daxpy",
     )
     maybe_add(
         targets_1d,
         "axpby",
-        "fnacc",
-        "fnacc_axpby",
-        build / "benchmarks/fnacc/fnacc-axpby/fnacc-axpby",
+        "TileOffload",
+        "tileoff_axpby",
+        build / "benchmarks/TileOffload/TileOffload-axpby/TileOffload-axpby",
     )
     maybe_add(
         targets_1d,
         "axpby_f64",
-        "fnacc",
-        "fnacc_axpby_f64",
-        build / "benchmarks/fnacc/fnacc-axpby-f64/fnacc-axpby-f64",
+        "TileOffload",
+        "tileoff_axpby_f64",
+        build / "benchmarks/TileOffload/TileOffload-axpby-f64/TileOffload-axpby-f64",
     )
     maybe_add(
         targets_2d,
         "matrix_add_2d",
-        "fnacc",
-        "fnacc_matrix_add_2d",
-        build / "benchmarks/fnacc/fnacc-matrix-add-2d/fnacc-matrix-add-2d",
+        "TileOffload",
+        "tileoff_matrix_add_2d",
+        build / "benchmarks/TileOffload/TileOffload-matrix-add-2d/TileOffload-matrix-add-2d",
     )
     maybe_add(
         targets_2d,
         "matrix_add_2d_f64",
-        "fnacc",
-        "fnacc_matrix_add_2d_f64",
-        build / "benchmarks/fnacc/fnacc-matrix-add-2d-f64/fnacc-matrix-add-2d-f64",
+        "TileOffload",
+        "tileoff_matrix_add_2d_f64",
+        build / "benchmarks/TileOffload/TileOffload-matrix-add-2d-f64/TileOffload-matrix-add-2d-f64",
     )
     maybe_add(
         targets_2d,
         "matmul_2d",
-        "fnacc",
-        "fnacc_matmul_2d",
-        build / "benchmarks/fnacc/fnacc-matmul-2d/fnacc-matmul-2d",
+        "TileOffload",
+        "tileoff_matmul_2d",
+        build / "benchmarks/TileOffload/TileOffload-matmul-2d/TileOffload-matmul-2d",
     )
     maybe_add(
         targets_2d,
         "matmul_2d_f64",
-        "fnacc",
-        "fnacc_matmul_2d_f64",
-        build / "benchmarks/fnacc/fnacc-matmul-2d-f64/fnacc-matmul-2d-f64",
+        "TileOffload",
+        "tileoff_matmul_2d_f64",
+        build / "benchmarks/TileOffload/TileOffload-matmul-2d-f64/TileOffload-matmul-2d-f64",
     )
     maybe_add(
         targets_1d,
         "reduction_dot",
-        "fnacc",
-        "fnacc_reduction_dot",
-        build / "benchmarks/fnacc/fnacc-reduction-dot/fnacc-reduction-dot",
+        "TileOffload",
+        "tileoff_reduction_dot",
+        build / "benchmarks/TileOffload/TileOffload-reduction-dot/TileOffload-reduction-dot",
     )
     maybe_add(
         targets_1d,
         "reduction_sum",
-        "fnacc",
-        "fnacc_reduction_sum",
-        build / "benchmarks/fnacc/fnacc-reduction-sum/fnacc-reduction-sum",
+        "TileOffload",
+        "tileoff_reduction_sum",
+        build / "benchmarks/TileOffload/TileOffload-reduction-sum/TileOffload-reduction-sum",
     )
     maybe_add(
         targets_1d,
         "reduction_dot_f64",
-        "fnacc",
-        "fnacc_reduction_dot_f64",
-        build / "benchmarks/fnacc/fnacc-reduction-dot-f64/fnacc-reduction-dot-f64",
+        "TileOffload",
+        "tileoff_reduction_dot_f64",
+        build / "benchmarks/TileOffload/TileOffload-reduction-dot-f64/TileOffload-reduction-dot-f64",
     )
 
 
@@ -786,22 +786,22 @@ def env_for_target(base_env, target):
     env["LC_ALL"] = "C"
     env["LANG"] = "C"
 
-    if target["backend"] == "fnacc" and not target.get("uses_runner", False):
-        side = find_fnacc_side_files(target["direct_exe"])
+    if target["backend"] == "TileOffload" and not target.get("uses_runner", False):
+        side = find_tileoff_side_files(target["direct_exe"])
 
         json = side.get("json")
         ptx = side.get("ptx")
         ptx_dir = side.get("ptx_dir")
 
         if json and ptx_dir:
-            env.setdefault("FNACC_PTX_DIR", str(ptx_dir.resolve()))
-            env.setdefault("FNACC_KERNELS_JSON", str(json.resolve()))
+            env.setdefault("tileoff_PTX_DIR", str(ptx_dir.resolve()))
+            env.setdefault("tileoff_KERNELS_JSON", str(json.resolve()))
         elif json and ptx:
-            env.setdefault("FNACC_PTX", str(ptx.resolve()))
-            env.setdefault("FNACC_KERNELS_JSON", str(json.resolve()))
+            env.setdefault("tileoff_PTX", str(ptx.resolve()))
+            env.setdefault("tileoff_KERNELS_JSON", str(json.resolve()))
         else:
             print(
-                f"warning: could not find local FNACC PTX/JSON side files "
+                f"warning: could not find local TileOffload PTX/JSON side files "
                 f"for {target['direct_exe']}; relying on embedded payload or "
                 f"default runtime lookup",
                 flush=True,
@@ -813,7 +813,7 @@ def env_for_target(base_env, target):
 def main():
     parser = argparse.ArgumentParser(
         description=(
-            "Run FnACC/CUDA/OpenMP/OpenMP-GPU/OpenACC benchmarks and collect "
+            "Run TileOffload/CUDA/OpenMP/OpenMP-GPU/OpenACC benchmarks and collect "
             "CSV results."
         )
     )
@@ -860,7 +860,7 @@ def main():
         default=[],
         help=(
             "Run only this backend. May be repeated. "
-            "Examples: fnacc, cuda, coda_cublas, openmp, openmp_gpu, openacc."
+            "Examples: TileOffload, cuda, coda_cublas, openmp, openmp_gpu, openacc."
         ),
     )
     parser.add_argument(
@@ -873,8 +873,8 @@ def main():
         ),
     )
 
-    parser.add_argument("--fnacc-profile", action="store_true")
-    parser.add_argument("--fnacc-debug", action="store_true")
+    parser.add_argument("--TileOffload-profile", action="store_true")
+    parser.add_argument("--TileOffload-debug", action="store_true")
     parser.add_argument("--cuda-launch-blocking", action="store_true")
 
     parser.add_argument(
@@ -968,16 +968,16 @@ def main():
 
     base_env = os.environ.copy()
 
-    # Also set these in the base env so non-FnACC commands inherit the clean
+    # Also set these in the base env so non-TileOffload commands inherit the clean
     # locale too.
     base_env["LC_ALL"] = "C"
     base_env["LANG"] = "C"
 
-    if args.fnacc_profile:
-        base_env["FNACC_PROFILE"] = "1"
+    if args.tileoff_profile:
+        base_env["tileoff_PROFILE"] = "1"
 
-    if args.fnacc_debug:
-        base_env["FNACC_DEBUG"] = "1"
+    if args.tileoff_debug:
+        base_env["tileoff_DEBUG"] = "1"
 
     if args.cuda_launch_blocking:
         base_env["CUDA_LAUNCH_BLOCKING"] = "1"

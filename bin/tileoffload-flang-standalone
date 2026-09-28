@@ -4,23 +4,23 @@ set -euo pipefail
 usage() {
   cat <<'EOF'
 Usage:
-  fnacc-flang-standalone --kernel-src KERNEL.f90 --main-src MAIN.f90 -o EXE [options]
+  tileoffload-flang-standalone --kernel-src KERNEL.f90 --main-src MAIN.f90 -o EXE [options]
 
 Required:
-  --kernel-src FILE        Fortran source containing FNACC kernel/module code
+  --kernel-src FILE        Fortran source containing TileOffload kernel/module code
   --main-src FILE          Fortran main/support source. May be repeated.
   -o, --output EXE         Output executable
 
 Options:
-  --extra-src FILE         Additional non-FNACC Fortran source. May be repeated.
+  --extra-src FILE         Additional non-TileOffload Fortran source. May be repeated.
   --base NAME              Base name for intermediate files
   --workdir DIR            Parent directory for a unique intermediate directory
                            (must not contain whitespace; MLIR pass-option limit)
   --sm NUM                 CUDA SM version, e.g. 80, 90, sm_80, cc80
 
-  --num-warps N            Number of Triton warps, default FNACC_NUM_WARPS or 1
-  --threads-per-warp N     Threads per warp, default FNACC_THREADS_PER_WARP or 32
-  --num-stages N           Triton pipeline stages, default FNACC_NUM_STAGES or 3
+  --num-warps N            Number of Triton warps, default TileOffload_NUM_WARPS or 1
+  --threads-per-warp N     Threads per warp, default TileOffload_THREADS_PER_WARP or 32
+  --num-stages N           Triton pipeline stages, default TileOffload_NUM_STAGES or 3
   --f64-matmul-strategy NAME Strategy to use for F64 MatMul
 
   -I DIR                   Add Fortran include/module search directory
@@ -39,7 +39,7 @@ Options:
                            Stages:
                              modgen
                              fir
-                             fnacc-pipeline
+                             tileoff-pipeline
                              ttgir
                              llvm-mlir
                              llvm-ir
@@ -63,42 +63,42 @@ Environment:
   CUDA_LIB_DIR             Optional CUDA driver library directory
 
 Optional environment:
-  FNACC_NUM_WARPS          number of warps to use, defaults to 1
-  FNACC_THREADS_PER_WARP   threads per warp, defaults to 32
-  FNACC_NUM_STAGES         number of Triton pipeline stages, defaults to 3
-  FNACC_SM                 default CUDA SM, default 80
-  FNACC_WORKDIR            default work directory. If unset, uses a temp dir.
+  TileOffload_NUM_WARPS          number of warps to use, defaults to 1
+  TileOffload_THREADS_PER_WARP   threads per warp, defaults to 32
+  TileOffload_NUM_STAGES         number of Triton pipeline stages, defaults to 3
+  TileOffload_SM                 default CUDA SM, default 80
+  TileOffload_WORKDIR            default work directory. If unset, uses a temp dir.
   FLANG                    override flang-new
   FIROPT                   override fir-opt
   TCO                      override tco
   CLANG                    override clang
 
 Advanced environment:
-  FNACC_TTGIR_TO_LLVM_PASSES
+  TileOffload_TTGIR_TO_LLVM_PASSES
                            Override TTGIR -> LLVM MLIR pass pipeline.
                            Parsed with shell-like quoting.
-  FNACC_TTIR_TO_TTGIR_PASSES
+  TileOffload_TTIR_TO_TTGIR_PASSES
                            Override TTIR -> TTGIR pass pipeline.
                            Parsed with shell-like quoting.
-  FNACC_PATCH_TTG_WARP_ID  Patch residual ttg.warp_id with NVPTX inline asm.
+  TileOffload_PATCH_TTG_WARP_ID  Patch residual ttg.warp_id with NVPTX inline asm.
                            Default: 0 (use only with a validated Triton revision)
-  FNACC_ALLOW_EMPTY_KERNELS
+  TileOffload_ALLOW_EMPTY_KERNELS
                            Allow no recognized kernels in generated JSON.
                            Default: 0
 EOF
 }
 
 die() {
-  echo "fnacc-flang-standalone: error: $*" >&2
+  echo "tileoffload-flang-standalone: error: $*" >&2
   exit 1
 }
 
 warn() {
-  echo "fnacc-flang-standalone: warning: $*" >&2
+  echo "tileoffload-flang-standalone: warning: $*" >&2
 }
 
 log() {
-  echo "[fnacc-flang-standalone] $*" >&2
+  echo "[tileoffload-flang-standalone] $*" >&2
 }
 
 quote_cmd() {
@@ -133,7 +133,7 @@ hash_path() {
 }
 
 make_temp_file() {
-  mktemp "$WORKDIR/.fnacc-check.XXXXXX"
+  mktemp "$WORKDIR/.tileoff-check.XXXXXX"
 }
 
 object_for_src() {
@@ -189,12 +189,12 @@ ptx_array_names = []
 
 for row in rows:
     name = c_ident(row["name"])
-    arr = f"__fnacc_embedded_ptx_{row['index']}_{name}"
+    arr = f"__tileoff_embedded_ptx_{row['index']}_{name}"
     ptx_array_names.append(arr)
     ptx_bytes = Path(row["ptx"]).read_bytes()
     chunks.append(emit_array(arr, ptx_bytes))
 
-chunks.append(emit_array("__fnacc_embedded_json", json_bytes))
+chunks.append(emit_array("__tileoff_embedded_json", json_bytes))
 
 ptrs = ",\n  ".join(f"(const char *){name}" for name in ptx_array_names)
 sizes = ",\n  ".join(f"sizeof({name})" for name in ptx_array_names)
@@ -202,7 +202,7 @@ sizes = ",\n  ".join(f"sizeof({name})" for name in ptx_array_names)
 content = f"""\
 #include <stddef.h>
 
-extern void __fnacc_register_embedded_kernel_bundle(
+extern void __tileoff_register_embedded_kernel_bundle(
     const char * const *ptxData,
     const size_t *ptxSizes,
     size_t ptxCount,
@@ -211,22 +211,22 @@ extern void __fnacc_register_embedded_kernel_bundle(
 
 {chr(10).join(chunks)}
 
-static const char *__fnacc_embedded_ptx_ptrs[] = {{
+static const char *__tileoff_embedded_ptx_ptrs[] = {{
   {ptrs}
 }};
 
-static const size_t __fnacc_embedded_ptx_sizes[] = {{
+static const size_t __tileoff_embedded_ptx_sizes[] = {{
   {sizes}
 }};
 
 __attribute__((constructor))
-static void __fnacc_register_embedded_payload(void) {{
-  __fnacc_register_embedded_kernel_bundle(
-      __fnacc_embedded_ptx_ptrs,
-      __fnacc_embedded_ptx_sizes,
-      sizeof(__fnacc_embedded_ptx_ptrs) / sizeof(__fnacc_embedded_ptx_ptrs[0]),
-      (const char *)__fnacc_embedded_json,
-      sizeof(__fnacc_embedded_json));
+static void __tileoff_register_embedded_payload(void) {{
+  __tileoff_register_embedded_kernel_bundle(
+      __tileoff_embedded_ptx_ptrs,
+      __tileoff_embedded_ptx_sizes,
+      sizeof(__tileoff_embedded_ptx_ptrs) / sizeof(__tileoff_embedded_ptx_ptrs[0]),
+      (const char *)__tileoff_embedded_json,
+      sizeof(__tileoff_embedded_json));
 }}
 """
 
@@ -250,7 +250,7 @@ kernels = metadata.get("kernels", [])
 
 if len(manifest) != len(kernels):
     raise SystemExit(
-        f"fnacc-flang-standalone: error: manifest has {len(manifest)} kernels but JSON has {len(kernels)}"
+        f"tileoffload-flang-standalone: error: manifest has {len(manifest)} kernels but JSON has {len(kernels)}"
     )
 
 by_name = {str(k.get("name")): k for k in kernels}
@@ -258,7 +258,7 @@ for row in manifest:
     name = str(row["name"])
     kernel = by_name.get(name)
     if kernel is None:
-        raise SystemExit(f"fnacc-flang-standalone: error: no JSON metadata for PTX kernel {name}")
+        raise SystemExit(f"tileoffload-flang-standalone: error: no JSON metadata for PTX kernel {name}")
 
     text = Path(row["ptx"]).read_text(encoding="utf-8")
     # Match the entry declaration itself, not the start of its body.  LLVM's
@@ -274,7 +274,7 @@ for row in manifest:
         flags=re.MULTILINE | re.DOTALL,
     )
     if match is None:
-        raise SystemExit(f"fnacc-flang-standalone: error: PTX entry {name} was not found in {row['ptx']}")
+        raise SystemExit(f"tileoffload-flang-standalone: error: PTX entry {name} was not found in {row['ptx']}")
 
     actual = len(re.findall(r"\.param\b", match.group(1)))
     explicit = len(kernel.get("params", []))
@@ -282,7 +282,7 @@ for row in manifest:
     actual_hidden = actual - explicit
     if actual_hidden != expected_hidden:
         raise SystemExit(
-            "fnacc-flang-standalone: error: Triton/runtime ABI mismatch for "
+            "tileoffload-flang-standalone: error: Triton/runtime ABI mismatch for "
             f"{name}: PTX has {actual} parameters ({actual_hidden} hidden), "
             f"but metadata expects {explicit} explicit + {expected_hidden} hidden. "
             "Use matching LLVM/Triton sources; do not run this binary."
@@ -314,7 +314,7 @@ validate_json() {
 validate_kernel_json_nonempty() {
   local json_file="$1"
 
-  python3 - "$json_file" "${FNACC_ALLOW_EMPTY_KERNELS:-0}" <<'PY'
+  python3 - "$json_file" "${TileOffload_ALLOW_EMPTY_KERNELS:-0}" <<'PY'
 import json
 import sys
 
@@ -324,22 +324,22 @@ with open(path, "r", encoding="utf-8") as f:
     data = json.load(f)
 
 kernels = data.get("kernels", [])
-if data.get("fnacc_schema_version") != 1:
-    print(f"fnacc-flang-standalone: error: unsupported FNACC JSON schema in {path}", file=sys.stderr)
+if data.get("tileoff_schema_version") != 1:
+    print(f"tileoffload-flang-standalone: error: unsupported TileOffload JSON schema in {path}", file=sys.stderr)
     raise SystemExit(1)
 if not kernels and not allow_empty:
-    print(f"fnacc-flang-standalone: error: no kernels were emitted into {path}", file=sys.stderr)
-    print("This usually means no FNACC launch was recognized.", file=sys.stderr)
-    print("Set FNACC_ALLOW_EMPTY_KERNELS=1 to allow this.", file=sys.stderr)
+    print(f"tileoffload-flang-standalone: error: no kernels were emitted into {path}", file=sys.stderr)
+    print("This usually means no TileOffload launch was recognized.", file=sys.stderr)
+    print("Set TileOffload_ALLOW_EMPTY_KERNELS=1 to allow this.", file=sys.stderr)
     raise SystemExit(1)
 
 for kernel in kernels:
     if not isinstance(kernel.get("params"), list):
-        print("fnacc-flang-standalone: error: kernel JSON has no parameter list", file=sys.stderr)
+        print("tileoffload-flang-standalone: error: kernel JSON has no parameter list", file=sys.stderr)
         raise SystemExit(1)
     if int(kernel.get("triton_hidden_ptr_args", -1)) != 2:
         print(
-            "fnacc-flang-standalone: error: this runtime supports exactly two hidden Triton parameters",
+            "tileoffload-flang-standalone: error: this runtime supports exactly two hidden Triton parameters",
             file=sys.stderr,
         )
         raise SystemExit(1)
@@ -359,11 +359,11 @@ validate_no_triton_gpu_ops() {
     "$file" > "$ttg_left" || true
 
   if [[ -s "$ttg_left" ]]; then
-    echo "fnacc-flang-standalone: error: residual TritonGPU dialect ops remain after LLVM lowering:" >&2
+    echo "tileoffload-flang-standalone: error: residual TritonGPU dialect ops remain after LLVM lowering:" >&2
     head -20 "$ttg_left" >&2
     echo >&2
     echo "This usually means the Triton pass pipeline did not fully lower TTGIR." >&2
-    echo "Check that triton-opt provides --convert-nv-gpu-to-llvm, or set FNACC_TTGIR_TO_LLVM_PASSES." >&2
+    echo "Check that triton-opt provides --convert-nv-gpu-to-llvm, or set TileOffload_TTGIR_TO_LLVM_PASSES." >&2
     echo "As a temporary workaround, compile with --num-warps 1." >&2
     rm -f "$ttg_left" "$tt_left"
     exit 1
@@ -373,7 +373,7 @@ validate_no_triton_gpu_ops() {
     "$file" > "$tt_left" || true
 
   if [[ -s "$tt_left" ]]; then
-    echo "fnacc-flang-standalone: error: residual Triton dialect ops remain after LLVM lowering:" >&2
+    echo "tileoffload-flang-standalone: error: residual Triton dialect ops remain after LLVM lowering:" >&2
     head -20 "$tt_left" >&2
     rm -f "$ttg_left" "$tt_left"
     exit 1
@@ -392,7 +392,7 @@ validate_no_unrealized_casts() {
     "$file" > "$left" || true
 
   if [[ -s "$left" ]]; then
-    echo "fnacc-flang-standalone: error: unrealized conversion casts remain before LLVM translation:" >&2
+    echo "tileoffload-flang-standalone: error: unrealized conversion casts remain before LLVM translation:" >&2
     head -20 "$left" >&2
     rm -f "$left"
     exit 1
@@ -439,7 +439,7 @@ with open(inp, "r", encoding="utf-8") as f, open(out, "w", encoding="utf-8") as 
 
 if changed:
     print(
-        f"fnacc-flang-standalone: lowered {changed} residual ttg.warp_id op(s) "
+        f"tileoffload-flang-standalone: lowered {changed} residual ttg.warp_id op(s) "
         f"using NVPTX inline asm",
         file=sys.stderr,
     )
@@ -531,7 +531,7 @@ def extract_tt_func(text, name):
 
     sig_line = text[pos:sig_end]
 
-    # Current FNACC emits:
+    # Current TileOffload emits:
     #   tt.func @foo(...) attributes {noinline = false} {
     # The body opener is the last "{" on the signature line.
     rel_body_open = sig_line.rfind("{")
@@ -655,15 +655,15 @@ MAIN_SRCS=()
 EXTRA_SRCS=()
 EXE=""
 BASE=""
-WORKDIR="${FNACC_WORKDIR:-}"
+WORKDIR="${TileOffload_WORKDIR:-}"
 USER_WORKDIR_SET=0
 
-SM="${FNACC_SM:-80}"
-NUM_WARPS="${FNACC_NUM_WARPS:-1}"
-THREADS_PER_WARP="${FNACC_THREADS_PER_WARP:-32}"
-NUM_STAGES="${FNACC_NUM_STAGES:-3}"
+SM="${TileOffload_SM:-80}"
+NUM_WARPS="${TileOffload_NUM_WARPS:-1}"
+THREADS_PER_WARP="${TileOffload_THREADS_PER_WARP:-32}"
+NUM_STAGES="${TileOffload_NUM_STAGES:-3}"
 
-F64_MATMUL_STRATEGY="${FNACC_F64_MATMUL_STRATEGY:-reduce}"
+F64_MATMUL_STRATEGY="${TileOffload_F64_MATMUL_STRATEGY:-reduce}"
 
 KEEP=0
 VERBOSE=0
@@ -684,7 +684,7 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --kernel-src)
       [[ $# -ge 2 ]] || die "--kernel-src requires an argument"
-      [[ -z "$KERNEL_SRC" ]] || die "--kernel-src may be specified only once; compile FNACC sources together"
+      [[ -z "$KERNEL_SRC" ]] || die "--kernel-src may be specified only once; compile TileOffload sources together"
       KERNEL_SRC="$2"
       shift 2
       ;;
@@ -809,7 +809,7 @@ done
 [[ -n "$EXE" ]] || die "missing -o/--output"
 
 case "$STOP_AFTER" in
-  ""|modgen|fir|fnacc-pipeline|ttgir|llvm-mlir|llvm-ir|ptx|embed|host-ll|host-obj|objects|link)
+  ""|modgen|fir|tileoff-pipeline|ttgir|llvm-mlir|llvm-ir|ptx|embed|host-ll|host-obj|objects|link)
     ;;
   *)
     die "invalid --stop-after stage: $STOP_AFTER"
@@ -924,7 +924,7 @@ if ! [[ "$BASE" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || [[ "$BASE" == "." || "$BAS
 fi
 
 if [[ -n "$WORKDIR" && "$WORKDIR" =~ [[:space:]] ]]; then
-  die "--workdir/FNACC_WORKDIR must not contain whitespace because MLIR pass options cannot represent it safely"
+  die "--workdir/TileOffload_WORKDIR must not contain whitespace because MLIR pass options cannot represent it safely"
 fi
 if [[ -z "$WORKDIR" && "${TMPDIR:-/tmp}" =~ [[:space:]] ]]; then
   die "TMPDIR must not contain whitespace because MLIR pass options cannot represent it safely"
@@ -932,10 +932,10 @@ fi
 
 if [[ "$DRY_RUN" == "1" ]]; then
   if [[ -z "$WORKDIR" ]]; then
-    WORKDIR="${TMPDIR:-/tmp}/fnacc-flang-standalone.dry-run"
+    WORKDIR="${TMPDIR:-/tmp}/tileoffload-flang-standalone.dry-run"
   else
     USER_WORKDIR_SET=1
-    WORKDIR="$WORKDIR/fnacc-${BASE}.dry-run"
+    WORKDIR="$WORKDIR/tileoff-${BASE}.dry-run"
   fi
 elif [[ -z "$WORKDIR" ]]; then
   TEMP_ROOT="${TMPDIR:-/tmp}"
@@ -945,11 +945,11 @@ elif [[ -z "$WORKDIR" ]]; then
   if [[ "$TEMP_ROOT" =~ [[:space:]] ]]; then
     die "no writable whitespace-free temporary directory is available"
   fi
-  WORKDIR="$(mktemp -d "$TEMP_ROOT/fnacc-flang-standalone.XXXXXX")"
+  WORKDIR="$(mktemp -d "$TEMP_ROOT/tileoffload-flang-standalone.XXXXXX")"
 else
   USER_WORKDIR_SET=1
   mkdir -p "$WORKDIR"
-  WORKDIR="$(mktemp -d "$WORKDIR/fnacc-${BASE}.XXXXXX")"
+  WORKDIR="$(mktemp -d "$WORKDIR/tileoff-${BASE}.XXXXXX")"
 fi
 
 # If external files are required by the runner, the generated PTX/JSON must
@@ -1047,10 +1047,10 @@ run "$FLANG" \
 maybe_stop modgen
 
 # --------------------------------------------------------------------------- #
-# 2. Emit FIR for the FNACC kernel source.
+# 2. Emit FIR for the TileOffload kernel source.
 # --------------------------------------------------------------------------- #
 
-log "[2/10] Emit FIR for FNACC source"
+log "[2/10] Emit FIR for TileOffload source"
 run "$FLANG" \
   -fc1 \
   -emit-fir \
@@ -1067,12 +1067,12 @@ fi
 maybe_stop fir
 
 # --------------------------------------------------------------------------- #
-# 3. FNACC pipeline: TTIR/JSON + host runtime lowering.
+# 3. TileOffload pipeline: TTIR/JSON + host runtime lowering.
 # --------------------------------------------------------------------------- #
 
-log "[3/10] Run FNACC pipeline"
+log "[3/10] Run TileOffload pipeline"
 run "$FIROPT" \
-  "--fnacc-pipeline=ttir-output=$TTIR json-output=$JSON emit-fortran-aliases=true num-warps=$NUM_WARPS threads-per-warp=$THREADS_PER_WARP num-stages=$NUM_STAGES f64-matmul-strategy=$F64_MATMUL_STRATEGY" \
+  "--tileoff-pipeline=ttir-output=$TTIR json-output=$JSON emit-fortran-aliases=true num-warps=$NUM_WARPS threads-per-warp=$THREADS_PER_WARP num-stages=$NUM_STAGES f64-matmul-strategy=$F64_MATMUL_STRATEGY" \
   "$FIR" \
   -o "$HOST_FIR"
 
@@ -1091,14 +1091,14 @@ fi
 
 log "effective warps:   $EFFECTIVE_NUM_WARPS"
 
-maybe_stop fnacc-pipeline
+maybe_stop tileoff-pipeline
 
 # --------------------------------------------------------------------------- #
 # 4. TTIR -> PTX.
 # --------------------------------------------------------------------------- #
 
 
-log "[4/10] Split TTIR into one module per FNACC kernel"
+log "[4/10] Split TTIR into one module per TileOffload kernel"
 if [[ "$DRY_RUN" == "1" ]]; then
   quote_cmd python3 "<split-ttir-helper>" "$TTIR" "$JSON" "$KERNEL_SPLIT_DIR" "$KERNEL_MANIFEST"
   log "[5/10] Per-kernel TTIR -> TTGIR"
@@ -1130,8 +1130,8 @@ else
     KTTGIR="$(manifest_get "$KERNEL_MANIFEST" "$ki" ttgir)"
     log "  kernel $ki: $KNAME num-warps=$KWARPS"
 
-    if [[ -n "${FNACC_TTIR_TO_TTGIR_PASSES:-}" ]]; then
-      mapfile -t TTIR_TO_TTGIR_PASSES < <(split_pass_pipeline "$FNACC_TTIR_TO_TTGIR_PASSES")
+    if [[ -n "${TileOffload_TTIR_TO_TTGIR_PASSES:-}" ]]; then
+      mapfile -t TTIR_TO_TTGIR_PASSES < <(split_pass_pipeline "$TileOffload_TTIR_TO_TTGIR_PASSES")
       run "$TRITON_OPT" "$KTTIR" "${TTIR_TO_TTGIR_PASSES[@]}" -o "$KTTGIR"
     else
       run "$TRITON_OPT" "$KTTIR" \
@@ -1148,8 +1148,8 @@ else
     KTTGIR="$(manifest_get "$KERNEL_MANIFEST" "$ki" ttgir)"
     KLLVM_MLIR="$(manifest_get "$KERNEL_MANIFEST" "$ki" llvm_mlir)"
 
-    if [[ -n "${FNACC_TTGIR_TO_LLVM_PASSES:-}" ]]; then
-      mapfile -t TTGIR_TO_LLVM_PASSES < <(split_pass_pipeline "$FNACC_TTGIR_TO_LLVM_PASSES")
+    if [[ -n "${TileOffload_TTGIR_TO_LLVM_PASSES:-}" ]]; then
+      mapfile -t TTGIR_TO_LLVM_PASSES < <(split_pass_pipeline "$TileOffload_TTGIR_TO_LLVM_PASSES")
       run "$TRITON_OPT" "$KTTGIR" "${TTGIR_TO_LLVM_PASSES[@]}" -o "$KLLVM_MLIR"
     else
       run "$TRITON_OPT" "$KTTGIR" \
@@ -1178,7 +1178,7 @@ else
     fi
     test -s "$KLLVM_MLIR" || die "kernel LLVM MLIR was not generated for $KNAME: $KLLVM_MLIR"
 
-    if [[ "${FNACC_PATCH_TTG_WARP_ID:-0}" == "1" ]]; then
+    if [[ "${TileOffload_PATCH_TTG_WARP_ID:-0}" == "1" ]]; then
       warn "applying version-sensitive ttg.warp_id workaround"
       lower_residual_ttg_warp_id "$KLLVM_MLIR"
     fi
@@ -1311,7 +1311,7 @@ run "$FLANG" \
   "$HOST_OBJ" \
   "${LINK_EMBED_OBJS[@]}" \
   "-L$LLVM_BUILD/lib" \
-  -lFortranFNACCRuntime \
+  -lFortranTileOffloadRuntime \
   "${CUDA_LINK_FLAGS[@]}" \
   -lcuda \
   -lstdc++ \
@@ -1342,14 +1342,14 @@ if [[ "$DRY_RUN" != "1" ]]; then
       printf '#!/usr/bin/env bash\nset -euo pipefail\n\n'
       printf 'default_ptx_dir=%q\n' "$PTX_DIR_ABS"
       printf 'default_json=%q\n' "$JSON_ABS"
-      printf 'export FNACC_PTX_DIR="${FNACC_PTX_DIR:-$default_ptx_dir}"\n'
-      printf 'export FNACC_KERNELS_JSON="${FNACC_KERNELS_JSON:-$default_json}"\n\n'
+      printf 'export TileOffload_PTX_DIR="${TileOffload_PTX_DIR:-$default_ptx_dir}"\n'
+      printf 'export TileOffload_KERNELS_JSON="${TileOffload_KERNELS_JSON:-$default_json}"\n\n'
       printf 'exec %q "$@"\n' "$EXE_ABS"
     } > "$RUNNER"
   else
     {
       printf '#!/usr/bin/env bash\nset -euo pipefail\n\n'
-      printf '# Kernels are embedded in the executable by fnacc-flang-standalone.\n'
+      printf '# Kernels are embedded in the executable by tileoffload-flang-standalone.\n'
       printf 'exec %q "$@"\n' "$EXE_ABS"
     } > "$RUNNER"
   fi

@@ -1,4 +1,4 @@
-# FNACC reduction validation
+# TileOffload reduction validation
 
 `reduction-validation.f90` checks sum, dot, product, minimum, and maximum
 reductions for `real32` and `real64`. It covers small inputs, tile boundaries,
@@ -12,7 +12,7 @@ that prebuilt executable. Configure the test as a standalone CMake project:
 
 ```sh
 cmake -S tests/reduction -B build/reduction \
-  -DFNACC_REDUCTION_TEST_DRIVER="$PWD/bin/fnacc-flang" \
+  -Dtileoff_REDUCTION_TEST_DRIVER="$PWD/bin/TileOffload-flang" \
   -DLLVM_BUILD="$LLVM_BUILD" \
   -DTRITON_OPT="$TRITON_OPT" \
   -DMLIR_TRANSLATE="$MLIR_TRANSLATE" \
@@ -21,7 +21,7 @@ cmake --build build/reduction
 ctest --test-dir build/reduction -V
 ```
 
-It can instead be part of the main FnAcc build by adding this to the root
+It can instead be part of the main TileOffload build by adding this to the root
 `CMakeLists.txt`:
 
 ```cmake
@@ -29,20 +29,20 @@ add_subdirectory(tests/reduction)
 ```
 
 With that integration, the default CMake build creates
-`build/tests/reduction/fnacc-reduction-validation`, and `ctest` runs it. The
+`build/tests/reduction/TileOffload-reduction-validation`, and `ctest` runs it. The
 target can also be built explicitly with
-`cmake --build build --target fnacc-reduction-validation-build`.
+`cmake --build build --target TileOffload-reduction-validation-build`.
 
 For four-warp reduction lowering, configure with:
 
 ```sh
 cmake -S tests/reduction -B build/reduction \
-  -DFNACC_REDUCTION_TEST_DRIVER="$PWD/bin/fnacc-flang" \
+  -Dtileoff_REDUCTION_TEST_DRIVER="$PWD/bin/TileOffload-flang" \
   -DLLVM_BUILD="$LLVM_BUILD" \
   -DTRITON_OPT="$TRITON_OPT" \
   -DMLIR_TRANSLATE="$MLIR_TRANSLATE" \
   -DLLC="$LLC" \
-  -DFNACC_NUM_WARPS=4
+  -Dtileoff_NUM_WARPS=4
 ```
 
 Residual `ttg.warp_id` operations are lowered automatically by the driver;
@@ -54,8 +54,8 @@ To run the already-built executable manually:
 
 ```sh
 tests/reduction/run-reduction-validation.sh \
-  build/tests/reduction/fnacc-reduction-validation
+  build/tests/reduction/TileOffload-reduction-validation
 ```
 
-Set `FNACC_REDUCTION_STATS=1` for any FNACC program to print a one-line runtime
+Set `tileoff_REDUCTION_STATS=1` for any TileOffload program to print a one-line runtime
 workspace summary at process exit.

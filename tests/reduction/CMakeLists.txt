@@ -1,62 +1,62 @@
 cmake_minimum_required(VERSION 3.20)
 
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
-  project(FNACCReductionValidation LANGUAGES NONE)
+  project(TileOffloadReductionValidation LANGUAGES NONE)
 endif()
 
 include(CTest)
 
-get_filename_component(_FNACC_DEFAULT_ROOT
+get_filename_component(_tileoff_DEFAULT_ROOT
   "${CMAKE_CURRENT_LIST_DIR}/../.." ABSOLUTE)
-set(FNACC_ROOT "${_FNACC_DEFAULT_ROOT}" CACHE PATH
-  "Path to the FnAcc repository root")
-unset(_FNACC_DEFAULT_ROOT)
+set(tileoff_ROOT "${_tileoff_DEFAULT_ROOT}" CACHE PATH
+  "Path to the TileOffload repository root")
+unset(_tileoff_DEFAULT_ROOT)
 
-set(_FNACC_REDUCTION_TEST_DRIVER_DEFAULT "${FNACC_ROOT}/bin/fnacc-flang")
-if(DEFINED FNACC_DRIVER AND NOT "${FNACC_DRIVER}" STREQUAL "")
-  set(_FNACC_REDUCTION_TEST_DRIVER_DEFAULT "${FNACC_DRIVER}")
-elseif(DEFINED ENV{FNACC_DRIVER} AND NOT "$ENV{FNACC_DRIVER}" STREQUAL "")
-  set(_FNACC_REDUCTION_TEST_DRIVER_DEFAULT "$ENV{FNACC_DRIVER}")
+set(_tileoff_REDUCTION_TEST_DRIVER_DEFAULT "${tileoff_ROOT}/bin/TileOffload-flang")
+if(DEFINED tileoff_DRIVER AND NOT "${tileoff_DRIVER}" STREQUAL "")
+  set(_tileoff_REDUCTION_TEST_DRIVER_DEFAULT "${tileoff_DRIVER}")
+elseif(DEFINED ENV{tileoff_DRIVER} AND NOT "$ENV{tileoff_DRIVER}" STREQUAL "")
+  set(_tileoff_REDUCTION_TEST_DRIVER_DEFAULT "$ENV{tileoff_DRIVER}")
 endif()
 
-set(FNACC_REDUCTION_TEST_DRIVER
-  "${_FNACC_REDUCTION_TEST_DRIVER_DEFAULT}" CACHE FILEPATH
-  "Path to the fnacc-flang compiler driver")
-unset(_FNACC_REDUCTION_TEST_DRIVER_DEFAULT)
+set(tileoff_REDUCTION_TEST_DRIVER
+  "${_tileoff_REDUCTION_TEST_DRIVER_DEFAULT}" CACHE FILEPATH
+  "Path to the TileOffload-flang compiler driver")
+unset(_tileoff_REDUCTION_TEST_DRIVER_DEFAULT)
 
 set(LLVM_BUILD "$ENV{LLVM_BUILD}" CACHE PATH
-  "llvm-project build directory used by fnacc-flang")
+  "llvm-project build directory used by TileOffload-flang")
 set(TRITON_OPT "$ENV{TRITON_OPT}" CACHE FILEPATH
-  "Path to triton-opt used by fnacc-flang")
+  "Path to triton-opt used by TileOffload-flang")
 set(MLIR_TRANSLATE "$ENV{MLIR_TRANSLATE}" CACHE FILEPATH
-  "Path to mlir-translate used by fnacc-flang")
+  "Path to mlir-translate used by TileOffload-flang")
 set(LLC "$ENV{LLC}" CACHE FILEPATH
-  "Path to llc used by fnacc-flang")
+  "Path to llc used by TileOffload-flang")
 set(CUDA_LIB_DIR "$ENV{CUDA_LIB_DIR}" CACHE PATH
   "Optional CUDA driver library directory")
 
-set(FNACC_SM "80" CACHE STRING
+set(tileoff_SM "80" CACHE STRING
   "CUDA SM architecture number, e.g. 80 or 90")
-set(FNACC_NUM_WARPS "1" CACHE STRING
+set(tileoff_NUM_WARPS "1" CACHE STRING
   "Number of Triton warps for the reduction validation kernels")
-set(FNACC_THREADS_PER_WARP "32" CACHE STRING
+set(tileoff_THREADS_PER_WARP "32" CACHE STRING
   "Threads per Triton warp")
-set(FNACC_NUM_STAGES "3" CACHE STRING
+set(tileoff_NUM_STAGES "3" CACHE STRING
   "Number of Triton pipeline stages")
-set(FNACC_REDUCTION_TEST_COMPILE_FLAGS "-O3" CACHE STRING
-  "Additional flags passed to fnacc-flang")
+set(tileoff_REDUCTION_TEST_COMPILE_FLAGS "-O3" CACHE STRING
+  "Additional flags passed to TileOffload-flang")
 
-option(FNACC_REDUCTION_TEST_BUILD_BY_DEFAULT
+option(tileoff_REDUCTION_TEST_BUILD_BY_DEFAULT
   "Build the reduction validation executable as part of the default build" ON)
-option(FNACC_REDUCTION_TEST_KEEP_INTERMEDIATES
-  "Keep fnacc-flang intermediate files for the reduction test" OFF)
-option(FNACC_REDUCTION_TEST_VERBOSE
-  "Print commands run internally by fnacc-flang" OFF)
+option(tileoff_REDUCTION_TEST_KEEP_INTERMEDIATES
+  "Keep TileOffload-flang intermediate files for the reduction test" OFF)
+option(tileoff_REDUCTION_TEST_VERBOSE
+  "Print commands run internally by TileOffload-flang" OFF)
 
-if(NOT EXISTS "${FNACC_REDUCTION_TEST_DRIVER}")
+if(NOT EXISTS "${tileoff_REDUCTION_TEST_DRIVER}")
   message(FATAL_ERROR
-    "fnacc-flang was not found at ${FNACC_REDUCTION_TEST_DRIVER}. "
-    "Set FNACC_REDUCTION_TEST_DRIVER or FNACC_DRIVER.")
+    "TileOffload-flang was not found at ${tileoff_REDUCTION_TEST_DRIVER}. "
+    "Set tileoff_REDUCTION_TEST_DRIVER or tileoff_DRIVER.")
 endif()
 
 if(NOT IS_DIRECTORY "${LLVM_BUILD}")
@@ -79,43 +79,43 @@ endif()
 
 if("${CMAKE_CURRENT_BINARY_DIR}" MATCHES " ")
   message(FATAL_ERROR
-    "The FNACC reduction test build directory must not contain whitespace.")
+    "The TileOffload reduction test build directory must not contain whitespace.")
 endif()
 
-separate_arguments(_FNACC_REDUCTION_TEST_COMPILE_FLAGS
-  UNIX_COMMAND "${FNACC_REDUCTION_TEST_COMPILE_FLAGS}")
+separate_arguments(_tileoff_REDUCTION_TEST_COMPILE_FLAGS
+  UNIX_COMMAND "${tileoff_REDUCTION_TEST_COMPILE_FLAGS}")
 
-set(_FNACC_REDUCTION_TEST_CONTROL_FLAGS)
-if(FNACC_REDUCTION_TEST_KEEP_INTERMEDIATES)
-  list(APPEND _FNACC_REDUCTION_TEST_CONTROL_FLAGS --fnacc-keep)
+set(_tileoff_REDUCTION_TEST_CONTROL_FLAGS)
+if(tileoff_REDUCTION_TEST_KEEP_INTERMEDIATES)
+  list(APPEND _tileoff_REDUCTION_TEST_CONTROL_FLAGS --TileOffload-keep)
 endif()
-if(FNACC_REDUCTION_TEST_VERBOSE)
-  list(APPEND _FNACC_REDUCTION_TEST_CONTROL_FLAGS --fnacc-verbose)
+if(tileoff_REDUCTION_TEST_VERBOSE)
+  list(APPEND _tileoff_REDUCTION_TEST_CONTROL_FLAGS --TileOffload-verbose)
 endif()
 
-set(_FNACC_REDUCTION_TEST_SOURCE
+set(_tileoff_REDUCTION_TEST_SOURCE
   "${CMAKE_CURRENT_LIST_DIR}/reduction-validation.f90")
-set(FNACC_REDUCTION_TEST_EXECUTABLE
-  "${CMAKE_CURRENT_BINARY_DIR}/fnacc-reduction-validation")
-set(_FNACC_REDUCTION_TEST_INTERMEDIATES
+set(tileoff_REDUCTION_TEST_EXECUTABLE
+  "${CMAKE_CURRENT_BINARY_DIR}/TileOffload-reduction-validation")
+set(_tileoff_REDUCTION_TEST_INTERMEDIATES
   "${CMAKE_CURRENT_BINARY_DIR}/intermediates")
-set(_FNACC_REDUCTION_TEST_MODULES
+set(_tileoff_REDUCTION_TEST_MODULES
   "${CMAKE_CURRENT_BINARY_DIR}/modules")
-set(_FNACC_REDUCTION_TEST_CONFIG
-  "${CMAKE_CURRENT_BINARY_DIR}/fnacc-reduction-validation.config")
+set(_tileoff_REDUCTION_TEST_CONFIG
+  "${CMAKE_CURRENT_BINARY_DIR}/TileOffload-reduction-validation.config")
 
-string(CONCAT _FNACC_REDUCTION_TEST_CONFIG_CONTENT
-  "driver=${FNACC_REDUCTION_TEST_DRIVER}\n"
-  "sm=${FNACC_SM}\n"
-  "num_warps=${FNACC_NUM_WARPS}\n"
-  "threads_per_warp=${FNACC_THREADS_PER_WARP}\n"
-  "num_stages=${FNACC_NUM_STAGES}\n"
-  "compile_flags=${FNACC_REDUCTION_TEST_COMPILE_FLAGS}\n")
-file(GENERATE OUTPUT "${_FNACC_REDUCTION_TEST_CONFIG}"
-  CONTENT "${_FNACC_REDUCTION_TEST_CONFIG_CONTENT}")
-unset(_FNACC_REDUCTION_TEST_CONFIG_CONTENT)
+string(CONCAT _tileoff_REDUCTION_TEST_CONFIG_CONTENT
+  "driver=${tileoff_REDUCTION_TEST_DRIVER}\n"
+  "sm=${tileoff_SM}\n"
+  "num_warps=${tileoff_NUM_WARPS}\n"
+  "threads_per_warp=${tileoff_THREADS_PER_WARP}\n"
+  "num_stages=${tileoff_NUM_STAGES}\n"
+  "compile_flags=${tileoff_REDUCTION_TEST_COMPILE_FLAGS}\n")
+file(GENERATE OUTPUT "${_tileoff_REDUCTION_TEST_CONFIG}"
+  CONTENT "${_tileoff_REDUCTION_TEST_CONFIG_CONTENT}")
+unset(_tileoff_REDUCTION_TEST_CONFIG_CONTENT)
 
-set(_FNACC_REDUCTION_TEST_ENVIRONMENT
+set(_tileoff_REDUCTION_TEST_ENVIRONMENT
   "LLVM_BUILD=${LLVM_BUILD}"
   "TRITON_OPT=${TRITON_OPT}"
   "MLIR_TRANSLATE=${MLIR_TRANSLATE}"
@@ -123,42 +123,42 @@ set(_FNACC_REDUCTION_TEST_ENVIRONMENT
   "CUDA_LIB_DIR=${CUDA_LIB_DIR}")
 
 add_custom_command(
-  OUTPUT "${FNACC_REDUCTION_TEST_EXECUTABLE}"
+  OUTPUT "${tileoff_REDUCTION_TEST_EXECUTABLE}"
   COMMAND "${CMAKE_COMMAND}" -E make_directory
-    "${_FNACC_REDUCTION_TEST_INTERMEDIATES}"
-    "${_FNACC_REDUCTION_TEST_MODULES}"
+    "${_tileoff_REDUCTION_TEST_INTERMEDIATES}"
+    "${_tileoff_REDUCTION_TEST_MODULES}"
   COMMAND "${CMAKE_COMMAND}" -E env
-    ${_FNACC_REDUCTION_TEST_ENVIRONMENT}
-    "${FNACC_REDUCTION_TEST_DRIVER}"
-      ${_FNACC_REDUCTION_TEST_CONTROL_FLAGS}
-      --fnacc-workdir "${_FNACC_REDUCTION_TEST_INTERMEDIATES}"
-      --fnacc-sm "${FNACC_SM}"
-      --fnacc-num-warps "${FNACC_NUM_WARPS}"
-      --fnacc-threads-per-warp "${FNACC_THREADS_PER_WARP}"
-      --fnacc-num-stages "${FNACC_NUM_STAGES}"
-      ${_FNACC_REDUCTION_TEST_COMPILE_FLAGS}
-      -I "${_FNACC_REDUCTION_TEST_MODULES}"
-      -J "${_FNACC_REDUCTION_TEST_MODULES}"
-      "${_FNACC_REDUCTION_TEST_SOURCE}"
-      -o "${FNACC_REDUCTION_TEST_EXECUTABLE}"
+    ${_tileoff_REDUCTION_TEST_ENVIRONMENT}
+    "${tileoff_REDUCTION_TEST_DRIVER}"
+      ${_tileoff_REDUCTION_TEST_CONTROL_FLAGS}
+      --TileOffload-workdir "${_tileoff_REDUCTION_TEST_INTERMEDIATES}"
+      --TileOffload-sm "${tileoff_SM}"
+      --TileOffload-num-warps "${tileoff_NUM_WARPS}"
+      --TileOffload-threads-per-warp "${tileoff_THREADS_PER_WARP}"
+      --TileOffload-num-stages "${tileoff_NUM_STAGES}"
+      ${_tileoff_REDUCTION_TEST_COMPILE_FLAGS}
+      -I "${_tileoff_REDUCTION_TEST_MODULES}"
+      -J "${_tileoff_REDUCTION_TEST_MODULES}"
+      "${_tileoff_REDUCTION_TEST_SOURCE}"
+      -o "${tileoff_REDUCTION_TEST_EXECUTABLE}"
   DEPENDS
-    "${FNACC_REDUCTION_TEST_DRIVER}"
-    "${_FNACC_REDUCTION_TEST_SOURCE}"
-    "${_FNACC_REDUCTION_TEST_CONFIG}"
-  COMMENT "Building FNACC reduction validation executable"
+    "${tileoff_REDUCTION_TEST_DRIVER}"
+    "${_tileoff_REDUCTION_TEST_SOURCE}"
+    "${_tileoff_REDUCTION_TEST_CONFIG}"
+  COMMENT "Building TileOffload reduction validation executable"
   VERBATIM
 )
 
-if(FNACC_REDUCTION_TEST_BUILD_BY_DEFAULT)
-  add_custom_target(fnacc-reduction-validation-build ALL
-    DEPENDS "${FNACC_REDUCTION_TEST_EXECUTABLE}")
+if(tileoff_REDUCTION_TEST_BUILD_BY_DEFAULT)
+  add_custom_target(TileOffload-reduction-validation-build ALL
+    DEPENDS "${tileoff_REDUCTION_TEST_EXECUTABLE}")
 else()
-  add_custom_target(fnacc-reduction-validation-build
-    DEPENDS "${FNACC_REDUCTION_TEST_EXECUTABLE}")
+  add_custom_target(TileOffload-reduction-validation-build
+    DEPENDS "${tileoff_REDUCTION_TEST_EXECUTABLE}")
 endif()
 
 if(BUILD_TESTING)
-  add_test(NAME fnacc-reduction-validation
+  add_test(NAME TileOffload-reduction-validation
     COMMAND "${CMAKE_CURRENT_LIST_DIR}/run-reduction-validation.sh"
-      "${FNACC_REDUCTION_TEST_EXECUTABLE}")
+      "${tileoff_REDUCTION_TEST_EXECUTABLE}")
 endif()

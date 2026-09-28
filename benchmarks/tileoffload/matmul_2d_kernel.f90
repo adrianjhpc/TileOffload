@@ -1,10 +1,10 @@
-module fnacc_matmul_2d_kernel
+module tileoff_matmul_2d_kernel
 contains
 
   subroutine matmul_2d_prepare(a, b, c)
     real :: a(:, :), b(:, :), c(:, :)
 
-    !$fnacc enter data copyin(a, b) create(c)
+    !$tileoff enter data copyin(a, b) create(c)
   end subroutine
 
   subroutine matmul_2d_compute(a, b, c)
@@ -12,7 +12,7 @@ contains
     integer :: i, j, p
     real :: acc
 
-    !$fnacc parallel tile(64, 64, 32) pack(a:device, b:device, c:device)
+    !$tileoff parallel tile(64, 64, 32) pack(a:device, b:device, c:device)
     do j = 1, size(c, 2)
       do i = 1, size(c, 1)
         acc = 0.0
@@ -28,13 +28,13 @@ contains
   subroutine matmul_2d_fetch(c)
     real :: c(:, :)
 
-    !$fnacc update host(c)
+    !$tileoff update host(c)
   end subroutine
 
   subroutine matmul_2d_release(a, b, c)
     real :: a(:, :), b(:, :), c(:, :)
 
-    !$fnacc exit data delete(a, b, c)
+    !$tileoff exit data delete(a, b, c)
   end subroutine
 
 end module

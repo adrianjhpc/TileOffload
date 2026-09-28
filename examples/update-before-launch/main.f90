@@ -1,5 +1,5 @@
 program main
-  use fnacc_update_before_launch_kernels
+  use tileoff_update_before_launch_kernels
   implicit none
 
   integer, parameter :: n = 1024

@@ -1,5 +1,5 @@
 program main
-  use fnacc_assumed_shape_kernels
+  use tileoff_assumed_shape_kernels
   implicit none
 
   integer, parameter :: n = 1024

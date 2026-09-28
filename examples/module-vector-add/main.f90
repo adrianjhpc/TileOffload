@@ -1,5 +1,5 @@
 program main
-  use fnacc_vector_kernels
+  use tileoff_vector_kernels
   implicit none
 
   integer, parameter :: n = 1024

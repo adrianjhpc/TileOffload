@@ -1,6 +1,6 @@
-program matmul_2d_f64_fnacc
+program matmul_2d_f64_TileOffload
   use bench_utils
-  use fnacc_matmul_2d_f64_kernel
+  use tileoff_matmul_2d_f64_kernel
   implicit none
 
   integer(8) :: n, m, k
@@ -40,12 +40,12 @@ program matmul_2d_f64_fnacc
   call matmul_2d_f64_compute(a, b, c)
   call matmul_2d_f64_compute(a, b, c)
 
-  !$fnacc wait
+  !$tileoff wait
   t0 = wall_time()
   do r = 1, reps
     call matmul_2d_f64_compute(a, b, c)
   end do
-  !$fnacc wait
+  !$tileoff wait
   t1 = wall_time()
 
   call matmul_2d_f64_fetch(c)
@@ -77,6 +77,6 @@ program matmul_2d_f64_fnacc
   elapsed = t1 - t0
   flops_per_rep = 2.0d0 * real(n, 8) * real(m, 8) * real(k, 8)
 
-  call print_result("fnacc_matmul_2d_f64", n, m, reps, elapsed, flops_per_rep, errors)
+  call print_result("tileoff_matmul_2d_f64", n, m, reps, elapsed, flops_per_rep, errors)
 end program
 

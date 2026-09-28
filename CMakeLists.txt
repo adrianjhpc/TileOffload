@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 
-project(FNACCExamples LANGUAGES NONE)
+project(TileOffloadExamples LANGUAGES NONE)
 
 include(CTest)
 
@@ -19,36 +19,36 @@ set(LLC "" CACHE FILEPATH
 set(CUDA_LIB_DIR "/usr/local/cuda/lib64" CACHE PATH
   "Path to CUDA driver library directory containing libcuda.so")
 
-set(FNACC_SM "80" CACHE STRING
+set(TILEOFF_SM "80" CACHE STRING
   "CUDA SM architecture number, e.g. 80, 90")
 
-set(FNACC_FLANG_WRAPPER "${CMAKE_CURRENT_SOURCE_DIR}/bin/fnacc-flang"
-  CACHE FILEPATH "Path to the fnacc-flang wrapper script")
+set(TILEOFF_FLANG_WRAPPER "${CMAKE_CURRENT_SOURCE_DIR}/bin/tileoffload-flang"
+  CACHE FILEPATH "Path to the tileoffload-flang wrapper script")
 
-option(FNACC_BUILD_EXAMPLES_BY_DEFAULT
-  "Build all FNACC examples as part of the default build target" ON)
+option(TILEOFF_BUILD_EXAMPLES_BY_DEFAULT
+  "Build all TileOffload examples as part of the default build target" ON)
 
-option(FNACC_ENABLE_TESTS
+option(TILEOFF_ENABLE_TESTS
   "Register generated examples as CTest tests" ON)
 
-option(FNACC_VERBOSE_WRAPPER
-  "Pass --verbose to the fnacc-flang wrapper" OFF)
+option(TILEOFF_VERBOSE_WRAPPER
+  "Pass --verbose to the tileoffload-flang wrapper" OFF)
 
-function(fnacc_require_path var description)
+function(tileoff_require_path var description)
   if(NOT DEFINED ${var} OR "${${var}}" STREQUAL "")
     message(FATAL_ERROR
       "${description} is required. Configure with -D${var}=...")
   endif()
 endfunction()
 
-function(fnacc_require_file path description)
+function(tileoff_require_file path description)
   if(NOT EXISTS "${path}")
     message(FATAL_ERROR
       "${description} does not exist: ${path}")
   endif()
 endfunction()
 
-function(fnacc_require_executable path description)
+function(tileoff_require_executable path description)
   if(NOT EXISTS "${path}")
     message(FATAL_ERROR
       "${description} does not exist: ${path}")
@@ -72,43 +72,43 @@ function(fnacc_require_executable path description)
 endfunction()
 
 
-fnacc_require_path(LLVM_BUILD "LLVM build directory")
-fnacc_require_path(TRITON_OPT "Triton triton-opt")
-fnacc_require_path(MLIR_TRANSLATE "Triton LLVM mlir-translate")
-fnacc_require_path(LLC "Triton LLVM llc")
+tileoff_require_path(LLVM_BUILD "LLVM build directory")
+tileoff_require_path(TRITON_OPT "Triton triton-opt")
+tileoff_require_path(MLIR_TRANSLATE "Triton LLVM mlir-translate")
+tileoff_require_path(LLC "Triton LLVM llc")
 
-set(FNACC_FLANG "${LLVM_BUILD}/bin/flang-new")
-set(FNACC_FIROPT "${LLVM_BUILD}/bin/fir-opt")
-set(FNACC_TCO "${LLVM_BUILD}/bin/tco")
-set(FNACC_CLANG "${LLVM_BUILD}/bin/clang")
+set(TILEOFF_FLANG "${LLVM_BUILD}/bin/flang-new")
+set(TILEOFF_FIROPT "${LLVM_BUILD}/bin/fir-opt")
+set(TILEOFF_TCO "${LLVM_BUILD}/bin/tco")
+set(TILEOFF_CLANG "${LLVM_BUILD}/bin/clang")
 
-fnacc_require_executable("${FNACC_FLANG_WRAPPER}" "FNACC wrapper")
-fnacc_require_executable("${FNACC_FLANG}" "flang-new")
-fnacc_require_executable("${FNACC_FIROPT}" "fir-opt")
-fnacc_require_executable("${FNACC_TCO}" "tco")
-fnacc_require_executable("${FNACC_CLANG}" "clang")
-fnacc_require_executable("${TRITON_OPT}" "triton-opt")
-fnacc_require_executable("${MLIR_TRANSLATE}" "mlir-translate")
-fnacc_require_executable("${LLC}" "llc")
+tileoff_require_executable("${TILEOFF_FLANG_WRAPPER}" "TileOffload wrapper")
+tileoff_require_executable("${TILEOFF_FLANG}" "flang-new")
+tileoff_require_executable("${TILEOFF_FIROPT}" "fir-opt")
+tileoff_require_executable("${TILEOFF_TCO}" "tco")
+tileoff_require_executable("${TILEOFF_CLANG}" "clang")
+tileoff_require_executable("${TRITON_OPT}" "triton-opt")
+tileoff_require_executable("${MLIR_TRANSLATE}" "mlir-translate")
+tileoff_require_executable("${LLC}" "llc")
 
 if(NOT EXISTS "${CUDA_LIB_DIR}")
   message(FATAL_ERROR "CUDA_LIB_DIR does not exist: ${CUDA_LIB_DIR}")
 endif()
 
-message(STATUS "FNACC examples configuration:")
+message(STATUS "TileOffload examples configuration:")
 message(STATUS "  LLVM_BUILD:        ${LLVM_BUILD}")
-message(STATUS "  flang-new:         ${FNACC_FLANG}")
-message(STATUS "  fir-opt:           ${FNACC_FIROPT}")
-message(STATUS "  tco:               ${FNACC_TCO}")
-message(STATUS "  clang:             ${FNACC_CLANG}")
+message(STATUS "  flang-new:         ${TILEOFF_FLANG}")
+message(STATUS "  fir-opt:           ${TILEOFF_FIROPT}")
+message(STATUS "  tco:               ${TILEOFF_TCO}")
+message(STATUS "  clang:             ${TILEOFF_CLANG}")
 message(STATUS "  triton-opt:        ${TRITON_OPT}")
 message(STATUS "  mlir-translate:    ${MLIR_TRANSLATE}")
 message(STATUS "  llc:               ${LLC}")
 message(STATUS "  CUDA_LIB_DIR:      ${CUDA_LIB_DIR}")
-message(STATUS "  FNACC_SM:          ${FNACC_SM}")
-message(STATUS "  wrapper:           ${FNACC_FLANG_WRAPPER}")
+message(STATUS "  TILEOFF_SM:          ${TILEOFF_SM}")
+message(STATUS "  wrapper:           ${TILEOFF_FLANG_WRAPPER}")
 
-function(add_fnacc_example name)
+function(add_tileoff_example name)
   set(options)
   set(one_value_args DIRECTORY)
   set(multi_value_args MAIN_SRCS EXTRA_SRCS)
@@ -119,13 +119,13 @@ function(add_fnacc_example name)
     ${ARGN})
 
   if(NOT ARG_DIRECTORY)
-    message(FATAL_ERROR "add_fnacc_example(${name}) requires DIRECTORY <dir>")
+    message(FATAL_ERROR "add_tileoff_example(${name}) requires DIRECTORY <dir>")
   endif()
 
   set(example_src_dir "${CMAKE_CURRENT_SOURCE_DIR}/${ARG_DIRECTORY}")
   set(kernel_src "${example_src_dir}/kernel.f90")
 
-  fnacc_require_file("${kernel_src}" "Kernel source for ${name}")
+  tileoff_require_file("${kernel_src}" "Kernel source for ${name}")
 
   if(ARG_MAIN_SRCS)
     set(main_srcs)
@@ -137,13 +137,13 @@ function(add_fnacc_example name)
   endif()
 
   foreach(src ${main_srcs})
-    fnacc_require_file("${src}" "Main source for ${name}")
+    tileoff_require_file("${src}" "Main source for ${name}")
   endforeach()
 
   set(extra_srcs)
   foreach(src ${ARG_EXTRA_SRCS})
     list(APPEND extra_srcs "${example_src_dir}/${src}")
-    fnacc_require_file("${example_src_dir}/${src}" "Extra source for ${name}")
+    tileoff_require_file("${example_src_dir}/${src}" "Extra source for ${name}")
   endforeach()
 
   set(example_build_dir "${CMAKE_CURRENT_BINARY_DIR}/examples/${name}")
@@ -154,7 +154,7 @@ function(add_fnacc_example name)
   set(base_path "${example_build_dir}/${base}")
 
   set(wrapper_args)
-  if(FNACC_VERBOSE_WRAPPER)
+  if(TILEOFF_VERBOSE_WRAPPER)
     list(APPEND wrapper_args --verbose)
   endif()
 
@@ -190,8 +190,8 @@ function(add_fnacc_example name)
       "MLIR_TRANSLATE=${MLIR_TRANSLATE}"
       "LLC=${LLC}"
       "CUDA_LIB_DIR=${CUDA_LIB_DIR}"
-      "FNACC_SM=${FNACC_SM}"
-      "${FNACC_FLANG_WRAPPER}"
+      "TILEOFF_SM=${TILEOFF_SM}"
+      "${TILEOFF_FLANG_WRAPPER}"
         --kernel-src "${kernel_src}"
         ${main_args}
         ${extra_args}
@@ -200,77 +200,77 @@ function(add_fnacc_example name)
         -o "${example_exe}"
         ${wrapper_args}
     DEPENDS
-      "${FNACC_FLANG_WRAPPER}"
+      "${TILEOFF_FLANG_WRAPPER}"
       "${kernel_src}"
       ${main_srcs}
       ${extra_srcs}
-    COMMENT "Building FNACC example ${name}"
+    COMMENT "Building TileOffload example ${name}"
     VERBATIM
   )
 
   add_custom_target("${name}" DEPENDS "${example_exe}" "${example_runner}")
-  set_property(TARGET "${name}" PROPERTY FOLDER "FNACC Examples")
+  set_property(TARGET "${name}" PROPERTY FOLDER "TileOffload Examples")
 
-  if(FNACC_ENABLE_TESTS AND BUILD_TESTING)
+  if(TILEOFF_ENABLE_TESTS AND BUILD_TESTING)
     add_test(
-      NAME "FNACC.${name}"
+      NAME "TileOffload.${name}"
       COMMAND "${example_runner}"
     )
 
-    set_tests_properties("FNACC.${name}" PROPERTIES
-      LABELS "FNACC"
+    set_tests_properties("TileOffload.${name}" PROPERTIES
+      LABELS "TileOffload"
       WORKING_DIRECTORY "${example_build_dir}"
       ENVIRONMENT
-        "FNACC_PTX=${base_path}.kernels.ptx;FNACC_KERNELS_JSON=${base_path}.kernels.json"
+        "TILEOFF_PTX=${base_path}.kernels.ptx;TILEOFF_KERNELS_JSON=${base_path}.kernels.json"
     )
   endif()
 
-  set(FNACC_EXAMPLE_TARGETS
-    ${FNACC_EXAMPLE_TARGETS}
+  set(TILEOFF_EXAMPLE_TARGETS
+    ${TILEOFF_EXAMPLE_TARGETS}
     "${name}"
     PARENT_SCOPE)
 endfunction()
 
-set(FNACC_EXAMPLE_TARGETS)
+set(TILEOFF_EXAMPLE_TARGETS)
 
-add_fnacc_example(vector-add
+add_tileoff_example(vector-add
   DIRECTORY examples/vector-add)
 
-add_fnacc_example(saxpy
+add_tileoff_example(saxpy
   DIRECTORY examples/saxpy)
 
-add_fnacc_example(axpby
+add_tileoff_example(axpby
   DIRECTORY examples/axpby)
 
-add_fnacc_example(matrix-add-2d
+add_tileoff_example(matrix-add-2d
   DIRECTORY examples/matrix-add-2d)
 
-add_fnacc_example(module-vector-add
+add_tileoff_example(module-vector-add
   DIRECTORY examples/module-vector-add)
 
-add_fnacc_example(assumed-shape-matrix-add-2d
+add_tileoff_example(assumed-shape-matrix-add-2d
   DIRECTORY examples/assumed-shape-matrix-add-2d)
 
-add_fnacc_example(update-before-launch
+add_tileoff_example(update-before-launch
   DIRECTORY examples/update-before-launch)
 
 
-if(FNACC_BUILD_EXAMPLES_BY_DEFAULT)
-  add_custom_target(fnacc-examples ALL
-    DEPENDS ${FNACC_EXAMPLE_TARGETS})
+if(TILEOFF_BUILD_EXAMPLES_BY_DEFAULT)
+  add_custom_target(tileoffload-examples ALL
+    DEPENDS ${TILEOFF_EXAMPLE_TARGETS})
 else()
-  add_custom_target(fnacc-examples
-    DEPENDS ${FNACC_EXAMPLE_TARGETS})
+  add_custom_target(tileoffload-examples
+    DEPENDS ${TILEOFF_EXAMPLE_TARGETS})
 endif()
 
-add_custom_target(fnacc-print-config
+add_custom_target(tileoffload-print-config
   COMMAND "${CMAKE_COMMAND}" -E echo "LLVM_BUILD=${LLVM_BUILD}"
   COMMAND "${CMAKE_COMMAND}" -E echo "TRITON_OPT=${TRITON_OPT}"
   COMMAND "${CMAKE_COMMAND}" -E echo "MLIR_TRANSLATE=${MLIR_TRANSLATE}"
   COMMAND "${CMAKE_COMMAND}" -E echo "LLC=${LLC}"
   COMMAND "${CMAKE_COMMAND}" -E echo "CUDA_LIB_DIR=${CUDA_LIB_DIR}"
-  COMMAND "${CMAKE_COMMAND}" -E echo "FNACC_SM=${FNACC_SM}"
-  COMMAND "${CMAKE_COMMAND}" -E echo "FNACC_FLANG_WRAPPER=${FNACC_FLANG_WRAPPER}"
+  COMMAND "${CMAKE_COMMAND}" -E echo "TILEOFF_SM=${TILEOFF_SM}"
+  COMMAND "${CMAKE_COMMAND}" -E echo "TILEOFF_FLANG_WRAPPER=${TILEOFF_FLANG_WRAPPER}"
 )
 
 add_subdirectory(benchmarks)

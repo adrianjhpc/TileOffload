@@ -8,37 +8,37 @@ from collections import defaultdict
 
 
 KNOWN_TARGET_ORDER = [
-    "fnacc_vector_add",
+    "tileoff_vector_add",
     "cuda_vector_add",
     "openmp_vector_add",
     "openmp_gpu_vector_add",
     "openacc_vector_add",
 
-    "fnacc_saxpy",
+    "tileoff_saxpy",
     "cuda_saxpy",
     "openmp_saxpy",
     "openmp_gpu_saxpy",
     "openacc_saxpy",
  
-    "fnacc_daxpy",
+    "tileoff_daxpy",
     "cuda_daxpy",
     "openmp_daxpy",
     "openmp_gpu_daxpy",
     "openacc_daxpy",
 
-    "fnacc_axpby",
+    "tileoff_axpby",
     "cuda_axpby",
     "openmp_axpby",
     "openmp_gpu_axpby",
     "openacc_axpby",
 
-    "fnacc_matrix_add_2d",
+    "tileoff_matrix_add_2d",
     "cuda_matrix_add_2d",
     "openmp_matrix_add_2d",
     "openmp_gpu_matrix_add_2d",
     "openacc_matrix_add_2d",
 
-    "fnacc_matmul_2d",
+    "tileoff_matmul_2d",
     "cuda_matmul_2d",
     "cuda_cublas_matmul_2d_fp32",
     "cuda_cublas_matmul_2d_tf32",
@@ -49,7 +49,7 @@ KNOWN_TARGET_ORDER = [
 
 
 KNOWN_BACKEND_ORDER = [
-    "fnacc",
+    "TileOffload",
     "cuda",
     "cuda_cublas",
     "openmp",
@@ -309,7 +309,7 @@ def validation_summary(rows):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Convert FnACC benchmark CSV into Markdown summary tables."
+        description="Convert TileOffload benchmark CSV into Markdown summary tables."
     )
 
     parser.add_argument("csv_file")

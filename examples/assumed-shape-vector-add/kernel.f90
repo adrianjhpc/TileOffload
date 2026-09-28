@@ -1,4 +1,4 @@
-module fnacc_assumed_shape_kernels
+module tileoff_assumed_shape_kernels
 contains
 
   subroutine vector_add_assumed_shape(a, b, c)
@@ -8,13 +8,13 @@ contains
 
     n = size(c)
 
-    !$fnacc parallel tile(128) pack(a:device, b:device, c:device)
+    !$tileoff parallel tile(128) pack(a:device, b:device, c:device)
     do i = 1, n
       c(i) = a(i) + b(i)
     end do
 
-    !$fnacc update host(c)
-    !$fnacc release all
+    !$tileoff update host(c)
+    !$tileoff release all
   end subroutine
 
 end module

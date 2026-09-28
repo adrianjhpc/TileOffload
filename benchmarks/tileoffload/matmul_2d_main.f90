@@ -1,6 +1,6 @@
-program matmul_2d_fnacc
+program matmul_2d_TileOffload
   use bench_utils
-  use fnacc_matmul_2d_kernel
+  use tileoff_matmul_2d_kernel
   implicit none
 
   integer(8) :: n, m, k
@@ -40,14 +40,14 @@ program matmul_2d_fnacc
   call matmul_2d_compute(a, b, c)
   call matmul_2d_compute(a, b, c)
 
-  !$fnacc wait
+  !$tileoff wait
   t0 = wall_time()
 
   do r = 1, reps
     call matmul_2d_compute(a, b, c)
   end do
 
-  !$fnacc wait
+  !$tileoff wait
   t1 = wall_time()
 
   call matmul_2d_fetch(c)
@@ -81,7 +81,7 @@ program matmul_2d_fnacc
   ! Interpret final rate as GFLOP/s.
   flops_per_rep = 2.0d0 * real(n, 8) * real(m, 8) * real(k, 8)
 
-  call print_result("fnacc_matmul_2d", n, m, reps, elapsed, flops_per_rep, errors)
+  call print_result("tileoff_matmul_2d", n, m, reps, elapsed, flops_per_rep, errors)
 
 end program
 

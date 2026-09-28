@@ -1,6 +1,6 @@
-program vector_add_fnacc
+program vector_add_TileOffload
   use bench_utils
-  use fnacc_vector_add_kernel
+  use tileoff_vector_add_kernel
   implicit none
 
   integer(8) :: n
@@ -28,12 +28,12 @@ program vector_add_fnacc
   call vector_add_compute(a, b, c)
   call vector_add_compute(a, b, c)
 
-  !$fnacc wait
+  !$tileoff wait
   t0 = wall_time()
   do r = 1, reps
     call vector_add_compute(a, b, c)
   end do
-  !$fnacc wait
+  !$tileoff wait
   t1 = wall_time()
 
   call vector_add_fetch(c)
@@ -49,6 +49,6 @@ program vector_add_fnacc
   elapsed = t1 - t0
   bytes_per_rep = 3.0d0 * real(n, 8) * 4.0d0
 
-  call print_result("fnacc_vector_add", n, 1_8, reps, elapsed, bytes_per_rep, errors)
+  call print_result("tileoff_vector_add", n, 1_8, reps, elapsed, bytes_per_rep, errors)
 end program
 

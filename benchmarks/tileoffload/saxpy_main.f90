@@ -1,6 +1,6 @@
-program saxpy_fnacc
+program saxpy_TileOffload
   use bench_utils
-  use fnacc_saxpy_kernel
+  use tileoff_saxpy_kernel
   implicit none
 
   integer(8) :: n
@@ -34,12 +34,12 @@ program saxpy_fnacc
   y(:) = y0(:)
   call saxpy_prepare(x, y)
 
-  !$fnacc wait
+  !$tileoff wait
   t0 = wall_time()
   do r = 1, reps
     call saxpy_compute(alpha, x, y)
   end do
-  !$fnacc wait
+  !$tileoff wait
   t1 = wall_time()
 
   call saxpy_fetch(y)
@@ -55,6 +55,6 @@ program saxpy_fnacc
   elapsed = t1 - t0
   bytes_per_rep = 3.0d0 * real(n, 8) * real(storage_size(y(1))/8, 8)
 
-  call print_result("fnacc_saxpy", n, 1_8, reps, elapsed, bytes_per_rep, errors)
+  call print_result("tileoff_saxpy", n, 1_8, reps, elapsed, bytes_per_rep, errors)
 end program
 

@@ -1,70 +1,70 @@
 cmake_minimum_required(VERSION 3.20)
 
-project(FNACCBenchmarks LANGUAGES C CXX)
+project(TileOffloadBenchmarks LANGUAGES C CXX)
 
 # -----------------------------------------------------------------------------
 # Options
 # -----------------------------------------------------------------------------
 
-set(FNACC_ROOT "${CMAKE_CURRENT_LIST_DIR}/.." CACHE PATH
-  "Path to external FnAcc repository root")
+set(TILEOFF_ROOT "${CMAKE_CURRENT_LIST_DIR}/.." CACHE PATH
+  "Path to external TileOffload repository root")
 
-set(_FNACC_DRIVER_DEFAULT "${FNACC_ROOT}/bin/fnacc-flang-driver")
-if(DEFINED ENV{FNACC_DRIVER} AND NOT "$ENV{FNACC_DRIVER}" STREQUAL "")
-  set(_FNACC_DRIVER_DEFAULT "$ENV{FNACC_DRIVER}")
+set(_TILEOFF_DRIVER_DEFAULT "${TILEOFF_ROOT}/bin/tileoffload-flang-driver")
+if(DEFINED ENV{TILEOFF_DRIVER} AND NOT "$ENV{TILEOFF_DRIVER}" STREQUAL "")
+  set(_TILEOFF_DRIVER_DEFAULT "$ENV{TILEOFF_DRIVER}")
 endif()
 
-set(FNACC_DRIVER "${_FNACC_DRIVER_DEFAULT}" CACHE FILEPATH
-  "Path to the traditional fnacc-flang-driver")
-unset(_FNACC_DRIVER_DEFAULT)
+set(TILEOFF_DRIVER "${_TILEOFF_DRIVER_DEFAULT}" CACHE FILEPATH
+  "Path to the traditional tileoffload-flang-driver")
+unset(_TILEOFF_DRIVER_DEFAULT)
 
 set(LLVM_BUILD "$ENV{LLVM_BUILD}" CACHE PATH
-  "llvm-project build directory used by fnacc-flang-driver")
+  "llvm-project build directory used by tileoffload-flang-driver")
 
 set(TRITON_OPT "$ENV{TRITON_OPT}" CACHE FILEPATH
-  "Path to triton-opt used by fnacc-flang-driver")
+  "Path to triton-opt used by tileoffload-flang-driver")
 
 set(MLIR_TRANSLATE "$ENV{MLIR_TRANSLATE}" CACHE FILEPATH
-  "Path to mlir-translate used by fnacc-flang-driver")
+  "Path to mlir-translate used by tileoffload-flang-driver")
 
 set(LLC "$ENV{LLC}" CACHE FILEPATH
-  "Path to llc used by fnacc-flang-driver")
+  "Path to llc used by tileoffload-flang-driver")
 
 set(CUDA_LIB_DIR "$ENV{CUDA_LIB_DIR}" CACHE PATH
   "Optional CUDA driver library directory")
 
-set(FNACC_SM "90" CACHE STRING
+set(TILEOFF_SM "90" CACHE STRING
   "CUDA SM architecture number, e.g. 80, 90")
 
-set(CUDA_ARCH "sm_${FNACC_SM}" CACHE STRING
+set(CUDA_ARCH "sm_${TILEOFF_SM}" CACHE STRING
   "CUDA architecture passed to nvcc, e.g. sm_80")
 
-set(OPENACC_GPU_ARCH "cc${FNACC_SM}" CACHE STRING
+set(OPENACC_GPU_ARCH "cc${TILEOFF_SM}" CACHE STRING
   "OpenACC GPU architecture passed to nvfortran, e.g. cc80")
 
-option(FNACC_ENABLE_FNACC_BENCHMARKS
-  "Build FNACC benchmarks" ON)
+option(TILEOFF_ENABLE_TILEOFF_BENCHMARKS
+  "Build TileOffload benchmarks" ON)
 
-option(FNACC_ENABLE_OPENMP_BASELINES
+option(TILEOFF_ENABLE_OPENMP_BASELINES
   "Build OpenMP CPU baselines" ON)
 
-option(FNACC_ENABLE_OPENMP_GPU_BASELINES
+option(TILEOFF_ENABLE_OPENMP_GPU_BASELINES
   "Build OpenMP GPU offloading baselines" ON)
 
-option(FNACC_ENABLE_OPENACC_BASELINES
+option(TILEOFF_ENABLE_OPENACC_BASELINES
   "Build OpenACC baselines with nvfortran" OFF)
 
-option(FNACC_ENABLE_CUDA_BASELINES
+option(TILEOFF_ENABLE_CUDA_BASELINES
   "Build CUDA baselines with nvcc" ON)
 
-option(FNACC_BENCH_BUILD_BY_DEFAULT
+option(TILEOFF_BENCH_BUILD_BY_DEFAULT
   "Build all enabled benchmark targets by default" ON)
 
-option(FNACC_KEEP_INTERMEDIATES
-  "Keep fnacc-flang-driver intermediate directories" OFF)
+option(TILEOFF_KEEP_INTERMEDIATES
+  "Keep tileoffload-flang-driver intermediate directories" OFF)
 
-option(FNACC_VERBOSE
-  "Print commands executed internally by fnacc-flang-driver" OFF)
+option(TILEOFF_VERBOSE
+  "Print commands executed internally by tileoffload-flang-driver" OFF)
 
 set(NVFORTRAN "" CACHE FILEPATH
   "Path to nvfortran for OpenACC baselines")
@@ -75,29 +75,29 @@ set(NVCC "" CACHE FILEPATH
 set(OPENMP_GPU_OFFLOAD_FLAGS "-fopenmp-targets=nvptx64-nvidia-cuda" CACHE STRING
   "Compiler flags for OpenMP target offloading (e.g. -fopenmp-targets=nvptx64-nvidia-cuda or -foffload=nvptx-none)")
 
-set(FNACC_NUM_WARPS "1" CACHE STRING
-  "Number of Triton warps for FNACC-generated kernels")
+set(TILEOFF_NUM_WARPS "1" CACHE STRING
+  "Number of Triton warps for tileoffload-generated kernels")
 
-set(FNACC_THREADS_PER_WARP "32" CACHE STRING
+set(TILEOFF_THREADS_PER_WARP "32" CACHE STRING
   "Triton/CUDA threads per warp")
 
-set(FNACC_MATMUL_NUM_WARPS "4" CACHE STRING
-  "Number of Triton warps for FNACC matmul benchmarks")
+set(TILEOFF_MATMUL_NUM_WARPS "4" CACHE STRING
+  "Number of Triton warps for TileOffload matmul benchmarks")
 
-set(FNACC_MATMUL_F64_NUM_WARPS "4" CACHE STRING
-  "Number of Triton warps for FNACC f64 matmul benchmarks")
+set(TILEOFF_MATMUL_F64_NUM_WARPS "4" CACHE STRING
+  "Number of Triton warps for TileOffload f64 matmul benchmarks")
 
-set(FNACC_NUM_STAGES "3" CACHE STRING
+set(TILEOFF_NUM_STAGES "3" CACHE STRING
   "Triton pipeline stages")
 
-set(FNACC_F64_MATMUL_STRATEGY "reduce" CACHE STRING
-  "FNACC f64 matmul strategy: reduce, fma, or dot")
+set(TILEOFF_F64_MATMUL_STRATEGY "reduce" CACHE STRING
+  "TileOffload f64 matmul strategy: reduce, fma, or dot")
 
-set(FNACC_COMPILE_FLAGS "-O3" CACHE STRING
-  "Additional flags passed through fnacc-flang-driver while compiling benchmarks")
+set(TILEOFF_COMPILE_FLAGS "-O3" CACHE STRING
+  "Additional flags passed through tileoffload-flang-driver while compiling benchmarks")
 
-set(FNACC_LINK_FLAGS "" CACHE STRING
-  "Additional flags passed through fnacc-flang-driver while linking benchmarks")
+set(TILEOFF_LINK_FLAGS "" CACHE STRING
+  "Additional flags passed through tileoffload-flang-driver while linking benchmarks")
 
 set(OPENACC_NVFORTRAN_FLAGS "-O3 -tp=zen3 -acc" CACHE STRING
   "nvfortran flags for OpenACC baselines")
@@ -110,15 +110,15 @@ set(OPENACC_GPU_FLAGS "-gpu=${OPENACC_GPU_ARCH}" CACHE STRING
 # Tool discovery
 # -----------------------------------------------------------------------------
 
-if(FNACC_ENABLE_CUDA_BASELINES AND NOT NVCC)
+if(TILEOFF_ENABLE_CUDA_BASELINES AND NOT NVCC)
   find_program(NVCC nvcc)
 endif()
 
-if(FNACC_ENABLE_OPENACC_BASELINES AND NOT NVFORTRAN)
+if(TILEOFF_ENABLE_OPENACC_BASELINES AND NOT NVFORTRAN)
   find_program(NVFORTRAN nvfortran)
 endif()
 
-if(FNACC_ENABLE_OPENMP_BASELINES OR FNACC_ENABLE_OPENMP_GPU_BASELINES)
+if(TILEOFF_ENABLE_OPENMP_BASELINES OR TILEOFF_ENABLE_OPENMP_GPU_BASELINES)
   enable_language(Fortran OPTIONAL)
 endif()
 
@@ -132,27 +132,27 @@ if(NOT EXISTS "${BENCH_COMMON}")
   message(FATAL_ERROR "Missing ${BENCH_COMMON}")
 endif()
 
-if(FNACC_ENABLE_FNACC_BENCHMARKS AND NOT EXISTS "${FNACC_DRIVER}")
+if(TILEOFF_ENABLE_TILEOFF_BENCHMARKS AND NOT EXISTS "${TILEOFF_DRIVER}")
   message(FATAL_ERROR
-    "fnacc-flang-driver not found: ${FNACC_DRIVER}. "
-    "Configure with -DFNACC_DRIVER=/path/to/fnacc-flang-driver")
+    "tileoffload-flang-driver not found: ${TILEOFF_DRIVER}. "
+    "Configure with -DTILEOFF_DRIVER=/path/to/tileoffload-flang-driver")
 endif()
 
-if(FNACC_ENABLE_FNACC_BENCHMARKS AND NOT IS_DIRECTORY "${LLVM_BUILD}")
+if(TILEOFF_ENABLE_TILEOFF_BENCHMARKS AND NOT IS_DIRECTORY "${LLVM_BUILD}")
   message(FATAL_ERROR
     "LLVM_BUILD is not a build directory: ${LLVM_BUILD}. "
     "Configure with -DLLVM_BUILD=/path/to/llvm-project/build")
 endif()
 
 foreach(tool_var IN ITEMS TRITON_OPT MLIR_TRANSLATE LLC)
-  if(FNACC_ENABLE_FNACC_BENCHMARKS AND NOT EXISTS "${${tool_var}}")
+  if(TILEOFF_ENABLE_TILEOFF_BENCHMARKS AND NOT EXISTS "${${tool_var}}")
     message(FATAL_ERROR
       "${tool_var} not found: ${${tool_var}}. "
       "Configure with -D${tool_var}=/path/to/tool")
   endif()
 endforeach()
 
-if(FNACC_ENABLE_FNACC_BENCHMARKS
+if(TILEOFF_ENABLE_TILEOFF_BENCHMARKS
     AND NOT "${CUDA_LIB_DIR}" STREQUAL ""
     AND NOT IS_DIRECTORY "${CUDA_LIB_DIR}")
   message(FATAL_ERROR "CUDA_LIB_DIR is not a directory: ${CUDA_LIB_DIR}")
@@ -161,51 +161,51 @@ endif()
 set(ALL_BENCHMARK_TARGETS)
 
 # -----------------------------------------------------------------------------
-# FNACC route
+# TileOffload route
 # -----------------------------------------------------------------------------
 
-function(add_fnacc_benchmark name kernel main)
-  set(workdir "${CMAKE_CURRENT_BINARY_DIR}/fnacc/${name}")
+function(add_tileoff_benchmark name kernel main)
+  set(workdir "${CMAKE_CURRENT_BINARY_DIR}/tileoffload/${name}")
   set(objdir "${workdir}/obj")
   set(moddir "${workdir}/mod")
   set(intermediate_parent "${workdir}/intermediates")
   set(exe "${workdir}/${name}")
 
-  set(kernel_source "${CMAKE_CURRENT_LIST_DIR}/fnacc/${kernel}")
-  set(main_source "${CMAKE_CURRENT_LIST_DIR}/fnacc/${main}")
+  set(kernel_source "${CMAKE_CURRENT_LIST_DIR}/tileoffload/${kernel}")
+  set(main_source "${CMAKE_CURRENT_LIST_DIR}/tileoffload/${main}")
   set(kernel_object "${objdir}/${name}.kernel.o")
   set(common_object "${objdir}/${name}.common.o")
   set(main_object "${objdir}/${name}.main.o")
 
-  set(effective_fnacc_num_warps "${FNACC_NUM_WARPS}")
+  set(effective_tileoff_num_warps "${TILEOFF_NUM_WARPS}")
 
-  if("${name}" STREQUAL "fnacc-matmul-2d")
-    set(effective_fnacc_num_warps "${FNACC_MATMUL_NUM_WARPS}")
+  if("${name}" STREQUAL "tileoffload-matmul-2d")
+    set(effective_tileoff_num_warps "${TILEOFF_MATMUL_NUM_WARPS}")
   endif()
 
-  if("${name}" STREQUAL "fnacc-matmul-2d-f64")
-    set(effective_fnacc_num_warps "${FNACC_MATMUL_F64_NUM_WARPS}")
+  if("${name}" STREQUAL "tileoffload-matmul-2d-f64")
+    set(effective_tileoff_num_warps "${TILEOFF_MATMUL_F64_NUM_WARPS}")
   endif()
 
-  separate_arguments(fnacc_compile_flags UNIX_COMMAND "${FNACC_COMPILE_FLAGS}")
-  separate_arguments(fnacc_link_flags UNIX_COMMAND "${FNACC_LINK_FLAGS}")
+  separate_arguments(tileoff_compile_flags UNIX_COMMAND "${TILEOFF_COMPILE_FLAGS}")
+  separate_arguments(tileoff_link_flags UNIX_COMMAND "${TILEOFF_LINK_FLAGS}")
 
-  set(fnacc_control_flags)
-  if(FNACC_KEEP_INTERMEDIATES)
-    list(APPEND fnacc_control_flags --fnacc-keep)
+  set(tileoff_control_flags)
+  if(TILEOFF_KEEP_INTERMEDIATES)
+    list(APPEND tileoff_control_flags --tileoff-keep)
   endif()
-  if(FNACC_VERBOSE)
-    list(APPEND fnacc_control_flags --fnacc-verbose)
+  if(TILEOFF_VERBOSE)
+    list(APPEND tileoff_control_flags --tileoff-verbose)
   endif()
 
-  set(fnacc_environment
+  set(tileoff_environment
     "LLVM_BUILD=${LLVM_BUILD}"
     "TRITON_OPT=${TRITON_OPT}"
     "MLIR_TRANSLATE=${MLIR_TRANSLATE}"
     "LLC=${LLC}"
     "CUDA_LIB_DIR=${CUDA_LIB_DIR}")
 
-  # Compile the FNACC translation unit into a self-contained relocatable
+  # Compile the TileOffload translation unit into a self-contained relocatable
   # object.  Its host code, PTX, JSON metadata, and registration constructor
   # are all carried by kernel_object, so the final link needs no sidecar files.
   add_custom_command(
@@ -213,24 +213,24 @@ function(add_fnacc_benchmark name kernel main)
     COMMAND "${CMAKE_COMMAND}" -E make_directory
       "${objdir}" "${moddir}" "${intermediate_parent}"
     COMMAND "${CMAKE_COMMAND}" -E env
-      ${fnacc_environment}
-      "${FNACC_DRIVER}"
-        ${fnacc_control_flags}
-        --fnacc-workdir "${intermediate_parent}"
-        --fnacc-sm "${FNACC_SM}"
-        --fnacc-num-warps "${effective_fnacc_num_warps}"
-        --fnacc-threads-per-warp "${FNACC_THREADS_PER_WARP}"
-        --fnacc-num-stages "${FNACC_NUM_STAGES}"
-        --fnacc-f64-matmul-strategy "${FNACC_F64_MATMUL_STRATEGY}"
-        ${fnacc_compile_flags}
+      ${tileoff_environment}
+      "${TILEOFF_DRIVER}"
+        ${tileoff_control_flags}
+        --tileoff-workdir "${intermediate_parent}"
+        --tileoff-sm "${TILEOFF_SM}"
+        --tileoff-num-warps "${effective_tileoff_num_warps}"
+        --tileoff-threads-per-warp "${TILEOFF_THREADS_PER_WARP}"
+        --tileoff-num-stages "${TILEOFF_NUM_STAGES}"
+        --tileoff-f64-matmul-strategy "${TILEOFF_F64_MATMUL_STRATEGY}"
+        ${tileoff_compile_flags}
         -I "${moddir}"
         -J "${moddir}"
         -c "${kernel_source}"
         -o "${kernel_object}"
     DEPENDS
-      "${FNACC_DRIVER}"
+      "${TILEOFF_DRIVER}"
       "${kernel_source}"
-    COMMENT "Compiling FNACC kernel object for ${name}"
+    COMMENT "Compiling TileOffload kernel object for ${name}"
     VERBATIM
   )
 
@@ -240,18 +240,18 @@ function(add_fnacc_benchmark name kernel main)
     OUTPUT "${common_object}"
     COMMAND "${CMAKE_COMMAND}" -E make_directory "${objdir}" "${moddir}"
     COMMAND "${CMAKE_COMMAND}" -E env
-      ${fnacc_environment}
-      "${FNACC_DRIVER}"
-        ${fnacc_control_flags}
-        ${fnacc_compile_flags}
+      ${tileoff_environment}
+      "${TILEOFF_DRIVER}"
+        ${tileoff_control_flags}
+        ${tileoff_compile_flags}
         -I "${moddir}"
         -J "${moddir}"
         -c "${BENCH_COMMON}"
         -o "${common_object}"
     DEPENDS
-      "${FNACC_DRIVER}"
+      "${TILEOFF_DRIVER}"
       "${BENCH_COMMON}"
-    COMMENT "Compiling FNACC benchmark utilities for ${name}"
+    COMMENT "Compiling TileOffload benchmark utilities for ${name}"
     VERBATIM
   )
 
@@ -261,45 +261,45 @@ function(add_fnacc_benchmark name kernel main)
     OUTPUT "${main_object}"
     COMMAND "${CMAKE_COMMAND}" -E make_directory "${objdir}" "${moddir}"
     COMMAND "${CMAKE_COMMAND}" -E env
-      ${fnacc_environment}
-      "${FNACC_DRIVER}"
-        ${fnacc_control_flags}
-        ${fnacc_compile_flags}
+      ${tileoff_environment}
+      "${TILEOFF_DRIVER}"
+        ${tileoff_control_flags}
+        ${tileoff_compile_flags}
         -I "${moddir}"
         -J "${moddir}"
         -c "${main_source}"
         -o "${main_object}"
     DEPENDS
-      "${FNACC_DRIVER}"
+      "${TILEOFF_DRIVER}"
       "${main_source}"
       "${kernel_object}"
       "${common_object}"
-    COMMENT "Compiling FNACC benchmark main object for ${name}"
+    COMMENT "Compiling TileOffload benchmark main object for ${name}"
     VERBATIM
   )
 
-  # Link the three ordinary objects.  --fnacc-runtime explicitly adds the
-  # FNACC runtime, CUDA driver library, and required runtime search path; this
+  # Link the three ordinary objects.  --tileoff-runtime explicitly adds the
+  # TileOffload runtime, CUDA driver library, and required runtime search path; this
   # also works on systems where no llvm-nm/nm is available for auto-detection.
   add_custom_command(
     OUTPUT "${exe}"
     COMMAND "${CMAKE_COMMAND}" -E make_directory "${workdir}"
     COMMAND "${CMAKE_COMMAND}" -E env
-      ${fnacc_environment}
-      "${FNACC_DRIVER}"
-        ${fnacc_control_flags}
-        --fnacc-runtime
+      ${tileoff_environment}
+      "${TILEOFF_DRIVER}"
+        ${tileoff_control_flags}
+        --tileoff-runtime
         "${main_object}"
         "${kernel_object}"
         "${common_object}"
-        ${fnacc_link_flags}
+        ${tileoff_link_flags}
         -o "${exe}"
     DEPENDS
-      "${FNACC_DRIVER}"
+      "${TILEOFF_DRIVER}"
       "${main_object}"
       "${kernel_object}"
       "${common_object}"
-    COMMENT "Linking FNACC benchmark ${name}"
+    COMMENT "Linking TileOffload benchmark ${name}"
     VERBATIM
   )
 
@@ -307,56 +307,56 @@ function(add_fnacc_benchmark name kernel main)
   set(ALL_BENCHMARK_TARGETS ${ALL_BENCHMARK_TARGETS} "${name}" PARENT_SCOPE)
 endfunction()
 
-if(FNACC_ENABLE_FNACC_BENCHMARKS)
-  add_fnacc_benchmark(fnacc-vector-add
+if(TILEOFF_ENABLE_TILEOFF_BENCHMARKS)
+  add_tileoff_benchmark(tileoffload-vector-add
     vector_add_kernel.f90
     vector_add_main.f90)
 
-  add_fnacc_benchmark(fnacc-vector-add-f64
+  add_tileoff_benchmark(tileoffload-vector-add-f64
     vector_add_f64_kernel.f90
     vector_add_f64_main.f90)
 
-  add_fnacc_benchmark(fnacc-saxpy
+  add_tileoff_benchmark(tileoffload-saxpy
     saxpy_kernel.f90
     saxpy_main.f90)
 
-  add_fnacc_benchmark(fnacc-daxpy
+  add_tileoff_benchmark(tileoffload-daxpy
     daxpy_kernel.f90
     daxpy_main.f90)
 
-  add_fnacc_benchmark(fnacc-axpby
+  add_tileoff_benchmark(tileoffload-axpby
     axpby_kernel.f90
     axpby_main.f90)
 
-  add_fnacc_benchmark(fnacc-axpby-f64
+  add_tileoff_benchmark(tileoffload-axpby-f64
     axpby_f64_kernel.f90
     axpby_f64_main.f90)
 
-  add_fnacc_benchmark(fnacc-matrix-add-2d
+  add_tileoff_benchmark(tileoffload-matrix-add-2d
     matrix_add_2d_kernel.f90
     matrix_add_2d_main.f90)
 
-  add_fnacc_benchmark(fnacc-matrix-add-2d-f64
+  add_tileoff_benchmark(tileoffload-matrix-add-2d-f64
     matrix_add_2d_f64_kernel.f90
     matrix_add_2d_f64_main.f90)
 
-  add_fnacc_benchmark(fnacc-matmul-2d
+  add_tileoff_benchmark(tileoffload-matmul-2d
     matmul_2d_kernel.f90
     matmul_2d_main.f90)
 
-  add_fnacc_benchmark(fnacc-matmul-2d-f64
+  add_tileoff_benchmark(tileoffload-matmul-2d-f64
     matmul_2d_f64_kernel.f90
     matmul_2d_f64_main.f90)
 
-  add_fnacc_benchmark(fnacc-reduction-sum
+  add_tileoff_benchmark(tileoffload-reduction-sum
     reduction_sum_kernel.f90
     reduction_sum_main.f90)
 
-  add_fnacc_benchmark(fnacc-reduction-dot
+  add_tileoff_benchmark(tileoffload-reduction-dot
     reduction_dot_kernel.f90
     reduction_dot_main.f90)
 
-  add_fnacc_benchmark(fnacc-reduction-dot-f64
+  add_tileoff_benchmark(tileoffload-reduction-dot-f64
     reduction_dot_f64_kernel.f90
     reduction_dot_f64_main.f90)
 
@@ -398,7 +398,7 @@ function(add_openmp_benchmark name source)
   set(ALL_BENCHMARK_TARGETS ${ALL_BENCHMARK_TARGETS} "${name}" PARENT_SCOPE)
 endfunction()
 
-if(FNACC_ENABLE_OPENMP_BASELINES)
+if(TILEOFF_ENABLE_OPENMP_BASELINES)
   if(CMAKE_Fortran_COMPILER)
     add_openmp_benchmark(openmp-vector-add vector_add_openmp.f90)
     add_openmp_benchmark(openmp-vector-add-f64 vector_add_f64_openmp.f90)
@@ -454,7 +454,7 @@ function(add_openmp_gpu_benchmark name source)
   set(ALL_BENCHMARK_TARGETS ${ALL_BENCHMARK_TARGETS} "${name}" PARENT_SCOPE)
 endfunction()
 
-if(FNACC_ENABLE_OPENMP_GPU_BASELINES)
+if(TILEOFF_ENABLE_OPENMP_GPU_BASELINES)
   if(CMAKE_Fortran_COMPILER)
     add_openmp_gpu_benchmark(openmp-gpu-vector-add vector_add_openmp_gpu.f90)
     add_openmp_gpu_benchmark(openmp-gpu-vector-add-f64 vector_add_f64_openmp_gpu.f90)
@@ -522,7 +522,7 @@ function(add_openacc_benchmark name source)
   set(ALL_BENCHMARK_TARGETS ${ALL_BENCHMARK_TARGETS} "${name}" PARENT_SCOPE)
 endfunction()
 
-if(FNACC_ENABLE_OPENACC_BASELINES)
+if(TILEOFF_ENABLE_OPENACC_BASELINES)
   if(NVFORTRAN)
     add_openacc_benchmark(openacc-vector-add vector_add_openacc.f90)
     add_openacc_benchmark(openacc-vector-add-f64 vector_add_f64_openacc.f90)
@@ -571,7 +571,7 @@ function(add_cuda_benchmark name source)
   set(ALL_BENCHMARK_TARGETS ${ALL_BENCHMARK_TARGETS} "${name}" PARENT_SCOPE)
 endfunction()
 
-if(FNACC_ENABLE_CUDA_BASELINES)
+if(TILEOFF_ENABLE_CUDA_BASELINES)
   if(NVCC)
     add_cuda_benchmark(cuda-vector-add vector_add_cuda.cu)
     add_cuda_benchmark(cuda-vector-add-f64 vector_add_f64_cuda.cu)
@@ -620,7 +620,7 @@ function(add_cuda_cublas_benchmark name source)
   set(ALL_BENCHMARK_TARGETS ${ALL_BENCHMARK_TARGETS} "${name}" PARENT_SCOPE)
 endfunction()
 
-if(FNACC_ENABLE_CUDA_BASELINES)
+if(TILEOFF_ENABLE_CUDA_BASELINES)
   if(NVCC)
     add_cuda_cublas_benchmark(cuda-matmul-2d-cublas matmul_2d_cublas.cu)
     add_cuda_cublas_benchmark(cuda-matmul-2d-cublas-f64 matmul_2d_f64_cublas.cu)
@@ -636,12 +636,12 @@ endif()
 # Aggregate target
 # -----------------------------------------------------------------------------
 
-if(FNACC_BENCH_BUILD_BY_DEFAULT)
-  add_custom_target(fnacc-all-benchmarks ALL
+if(TILEOFF_BENCH_BUILD_BY_DEFAULT)
+  add_custom_target(tileoffload-all-benchmarks ALL
     DEPENDS ${ALL_BENCHMARK_TARGETS})
 else()
-  add_custom_target(fnacc-all-benchmarks
+  add_custom_target(tileoffload-all-benchmarks
     DEPENDS ${ALL_BENCHMARK_TARGETS})
 endif()
 
-message(STATUS "FNACC benchmark targets: ${ALL_BENCHMARK_TARGETS}")
+message(STATUS "TileOffload benchmark targets: ${ALL_BENCHMARK_TARGETS}")

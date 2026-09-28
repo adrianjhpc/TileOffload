@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-WRAPPER="$ROOT_DIR/bin/fnacc-flang"
+WRAPPER="$ROOT_DIR/bin/TileOffload-flang"
 
 if [[ ! -x "$WRAPPER" ]]; then
   echo "error: wrapper is not executable: $WRAPPER" >&2
@@ -40,5 +40,5 @@ run_example module-vector-add
 run_example assumed-shape-matrix-add-2d
 
 echo
-echo "all FNACC examples passed"
+echo "all TileOffload examples passed"
 

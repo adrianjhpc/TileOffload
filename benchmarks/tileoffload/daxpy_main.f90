@@ -1,6 +1,6 @@
-program daxpy_fnacc
+program daxpy_TileOffload
   use bench_utils
-  use fnacc_daxpy_kernel
+  use tileoff_daxpy_kernel
   implicit none
 
   integer(8) :: n
@@ -34,12 +34,12 @@ program daxpy_fnacc
   y(:) = y0(:)
   call daxpy_prepare(x, y)
 
-  !$fnacc wait
+  !$tileoff wait
   t0 = wall_time()
   do r = 1, reps
     call daxpy_compute(alpha, x, y)
   end do
-  !$fnacc wait
+  !$tileoff wait
   t1 = wall_time()
 
   call daxpy_fetch(y)
@@ -55,6 +55,6 @@ program daxpy_fnacc
   elapsed = t1 - t0
   bytes_per_rep = 3.0d0 * real(n, 8) * real(storage_size(y(1))/8, 8)
 
-  call print_result("fnacc_daxpy", n, 1_8, reps, elapsed, bytes_per_rep, errors)
+  call print_result("tileoff_daxpy", n, 1_8, reps, elapsed, bytes_per_rep, errors)
 end program
 

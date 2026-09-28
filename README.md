@@ -1,6 +1,6 @@
-# FnACC
+# TileOffload
 
-FnACC is an experimental directive-based programming model for moving
+TileOffload is an experimental directive-based programming model for moving
 Fortran loop kernels to GPUs and other accelerators. Its source model is
 deliberately similar to OpenACC and OpenMP offload, while its compiler path is
 built directly into LLVM Flang.
@@ -11,12 +11,12 @@ Kernel recognition, launch planning, metadata, and the host runtime interface
 are backend-neutral so that other code-generation backends and accelerator
 targets can be added without changing the Fortran programming model.
 
-The FnACC compiler changes currently live on the
-[FnACC branch of the LLVM fork](https://github.com/adrianjhpc/llvm-project/tree/FnACC).
+The TileOffload compiler changes currently live on the
+[TileOffload branch of the LLVM fork](https://github.com/adrianjhpc/llvm-project/tree/TileOffload).
 The compiler driver lives in a separate repository.
 
 > [!IMPORTANT]
-> FnACC is a prototype. The accepted Fortran subset, directive syntax, runtime
+> TileOffload is a prototype. The accepted Fortran subset, directive syntax, runtime
 > ABI, and generated JSON may change. The compiler source and regression tests
 > are the authoritative contract.
 
@@ -41,13 +41,13 @@ The compiler driver lives in a separate repository.
 - [Backend artifact contract](#backend-artifact-contract)
 - [Performance tuning and profiling](#performance-tuning-and-profiling)
 - [Testing](#testing)
-- [Extending FnACC](#extending-fnacc)
+- [Extending TileOffload](#extending-TileOffload)
 - [Diagnostics and troubleshooting](#diagnostics-and-troubleshooting)
 - [Known limitations](#known-limitations)
 
 ## Current capabilities
 
-FnACC currently provides:
+TileOffload currently provides:
 
 - `parallel` lowering for recognised one- and two-dimensional Fortran loops;
 - arbitrary runtime loop lower and upper bounds for elementwise, stencil, and
@@ -73,12 +73,12 @@ FnACC currently provides:
 - derived-component data designators such as
   `chunk%tiles(1)%field%density0`;
 - `no_copyback` launch behavior for device-resident outputs;
-- opt-in asynchronous resident launches with `FNACC_ASYNC_RESIDENT=1`;
-- explicit synchronization with `!$fnacc wait`;
+- opt-in asynchronous resident launches with `tileoff_ASYNC_RESIDENT=1`;
+- explicit synchronization with `!$tileoff wait`;
 - IEEE-default FP32 matmul and explicit `matmul_precision(tf32|tf32x3)`;
 - explicit-shape, assumed-shape, pointer/heap-backed, and allocatable arrays
   when their storage is contiguous;
-- multiple separately compiled embedded FnACC bundles in one executable;
+- multiple separately compiled embedded TileOffload bundles in one executable;
 - initial end-to-end NVIDIA CUDA and AMD HIP/ROCm target support;
 - embedded PTX images for CUDA and HSACO images for HIP;
 - per-device and per-accelerator-context runtime state; and
@@ -91,15 +91,15 @@ FnACC currently provides:
 The implemented end-to-end paths are:
 
 ```text
-Fortran + !$fnacc
+Fortran + !$tileoff
   -> Flang parse tree and semantics
-  -> FIR with fnacc.launch and FnACC data operations
+  -> FIR with TileOffload.launch and TileOffload data operations
   -> kernel recognition and backend-neutral planning
   -> Triton TTIR -> target-specific TTGIR -> LLVM MLIR -> LLVM IR
        CUDA: NVPTX + CUDA libdevice -> PTX
        HIP:  AMDGPU + OCML/OCKL/control bitcode -> object -> HSACO
   -> embedded typed device-image/JSON bundle
-  -> host object + matching FnACC CUDA Driver API or HIP runtime
+  -> host object + matching TileOffload CUDA Driver API or HIP runtime
 ```
 
 The recogniser is intentionally fail-closed. A `parallel` region is compiled
@@ -110,35 +110,35 @@ host.
 ## GPU targets
 
 The code-generation backend and accelerator target are separate choices.
-`--fnacc-backend triton` selects the kernel code generator;
-`--fnacc-target cuda|hip` selects the device toolchain, image format, and host
+`--TileOffload-backend triton` selects the kernel code generator;
+`--TileOffload-target cuda|hip` selects the device toolchain, image format, and host
 runtime.
 
 | Target | Architecture example | Subgroup width | Embedded image | Runtime library |
 | --- | --- | --- | --- | --- |
-| `cuda` | `sm_90a` | `32` | PTX | `FortranFNACCRuntime` + CUDA Driver API |
-| `hip` | `gfx90a`, `gfx942` | `64` for `gfx9*` by default; otherwise `32` | HSACO | `FortranFNACCRuntimeHIP` + `libamdhip64` |
+| `cuda` | `sm_90a` | `32` | PTX | `FortranTileOffloadRuntime` + CUDA Driver API |
+| `hip` | `gfx90a`, `gfx942` | `64` for `gfx9*` by default; otherwise `32` | HSACO | `FortranTileOffloadRuntimeHIP` + `libamdhip64` |
 
 CUDA remains the default target for compatibility. Select AMD explicitly:
 
 ```sh
-fnacc-flang --fnacc-target hip --fnacc-gpu-arch gfx942 ...
+TileOffload-flang --TileOffload-target hip --TileOffload-gpu-arch gfx942 ...
 ```
 
-`--fnacc-target` also accepts `nvidia`, `amd`, and `rocm` as normalized
-spellings. `--fnacc-sm` remains the CUDA compatibility option, while
-`--fnacc-amd-arch` is an AMD compatibility spelling for
-`--fnacc-target hip --fnacc-gpu-arch ARCH`.
+`--TileOffload-target` also accepts `nvidia`, `amd`, and `rocm` as normalized
+spellings. `--TileOffload-sm` remains the CUDA compatibility option, while
+`--TileOffload-amd-arch` is an AMD compatibility spelling for
+`--TileOffload-target hip --TileOffload-gpu-arch ARCH`.
 
-All FnACC-bearing objects linked into one executable must target the same
+All TileOffload-bearing objects linked into one executable must target the same
 accelerator platform. The final link invocation must use the same
-`--fnacc-target` so that the driver selects the matching runtime library.
+`--TileOffload-target` so that the driver selects the matching runtime library.
 
 ## Building the toolchain
 
 ### Required tools
 
-The driver needs an FnACC-enabled LLVM/Flang build and a matching Triton/LLVM
+The driver needs an TileOffload-enabled LLVM/Flang build and a matching Triton/LLVM
 lowering toolchain:
 
 ```sh
@@ -157,7 +157,7 @@ For CUDA, make the CUDA Driver API and libdevice installation discoverable:
 export CUDA_LIB_DIR=/usr/local/cuda/lib64
 
 # Usually auto-detected; set this only when necessary.
-export FNACC_CUDA_LIBDEVICE=/usr/local/cuda/nvvm/libdevice/libdevice.10.bc
+export tileoff_CUDA_LIBDEVICE=/usr/local/cuda/nvvm/libdevice/libdevice.10.bc
 ```
 
 For HIP, provide a ROCm installation and `ld.lld`:
@@ -172,24 +172,24 @@ Configure one or both runtime targets:
 ```sh
 cmake -S llvm -B build -G Ninja \
   -DLLVM_ENABLE_PROJECTS="clang;mlir;flang" \
-  -DFLANG_FNACC_RUNTIME=ON \
-  -DFLANG_FNACC_RUNTIME_BACKEND=BOTH
+  -DFLANG_tileoff_RUNTIME=ON \
+  -DFLANG_tileoff_RUNTIME_BACKEND=BOTH
 ```
 
-`FLANG_FNACC_RUNTIME_BACKEND` accepts `CUDA`, `HIP`, or `BOTH` and defaults to
+`FLANG_tileoff_RUNTIME_BACKEND` accepts `CUDA`, `HIP`, or `BOTH` and defaults to
 `CUDA`. A HIP or `BOTH` build must find `hip/hip_runtime_api.h` and
 `libamdhip64`; set `ROCM_PATH`, `HIP_PATH`, `HIP_DRIVER_INCLUDE_DIR`, or
 `HIP_DRIVER_LIBRARY` when they are outside normal locations. A CUDA or `BOTH`
 build must find the CUDA driver headers and library.
 
-`FLANG_FNACC=ON` remains a compatibility spelling when
-`FLANG_FNACC_RUNTIME` is not set explicitly.
+`FLANG_TileOffload=ON` remains a compatibility spelling when
+`FLANG_tileoff_RUNTIME` is not set explicitly.
 
 Typical rebuild targets are:
 
 ```sh
 cmake --build "$LLVM_BUILD" \
-  --target fir-opt flang FortranFNACCRuntime FortranFNACCRuntimeHIP
+  --target fir-opt flang FortranTileOffloadRuntime FortranTileOffloadRuntimeHIP
 ```
 
 When only one target was configured, omit the other runtime target from the
@@ -198,7 +198,7 @@ assertion, compiler, and dependency settings of your working LLVM/Triton build.
 With an existing Ninja build, the equivalent rebuild is:
 
 ```sh
-ninja -C "$LLVM_BUILD" fir-opt flang FortranFNACCRuntime
+ninja -C "$LLVM_BUILD" fir-opt flang FortranTileOffloadRuntime
 ```
 
 After changing device lowering, recompile the affected Fortran source objects
@@ -209,7 +209,7 @@ changes.
 
 NVTX instrumentation is optional and disabled by default in the revised runtime.
 A normal runtime build does not require `nvtx3/nvtx3.hpp`. For an instrumented
-build, define `FNACC_ENABLE_NVTX=1` on the runtime CMake target, add the directory
+build, define `tileoff_ENABLE_NVTX=1` on the runtime CMake target, add the directory
 containing `nvtx3/` to its include paths, and link `${CMAKE_DL_LIBS}` where needed.
 Set include paths in CMake and regenerate the Ninja build; do not edit generated
 `build.ninja` rules. Runtime targets also require the platform thread dependency
@@ -229,7 +229,7 @@ contains
     real, intent(out) :: c(n)
     integer :: i
 
-    !$fnacc parallel tile(256) no_copyback
+    !$tileoff parallel tile(256) no_copyback
     do i = 1, n
       c(i) = a(i) + b(i)
     end do
@@ -246,12 +246,12 @@ program example
   a = 1.0
   b = 2.0
 
-  !$fnacc enter data copyin(a, b) create(c)
-  !$fnacc present(a, b, c)
+  !$tileoff enter data copyin(a, b) create(c)
+  !$tileoff present(a, b, c)
 
   call vector_add(n, a, b, c)
 
-  !$fnacc exit data copyout(c) delete(a, b, c)
+  !$tileoff exit data copyout(c) delete(a, b, c)
 
   if (any(c /= 3.0)) error stop "validation failed"
 end program
@@ -260,43 +260,43 @@ end program
 Compile, link, and run it on NVIDIA CUDA (the default target):
 
 ```sh
-/path/to/FnAcc/bin/fnacc-flang \
-  --fnacc-target cuda --fnacc-gpu-arch sm_90a \
+/path/to/TileOffload/bin/TileOffload-flang \
+  --TileOffload-target cuda --TileOffload-gpu-arch sm_90a \
   example.f90 -O3 -o example
-FNACC_DEVICE=0 ./example
+tileoff_DEVICE=0 ./example
 ```
 
 Compile the same source for AMD HIP/ROCm:
 
 ```sh
-/path/to/FnAcc/bin/fnacc-flang \
-  --fnacc-target hip --fnacc-gpu-arch gfx942 \
+/path/to/TileOffload/bin/TileOffload-flang \
+  --TileOffload-target hip --TileOffload-gpu-arch gfx942 \
   example.f90 -O3 -o example
-FNACC_DEVICE=0 ./example
+tileoff_DEVICE=0 ./example
 ```
 
 For separate compilation:
 
 ```sh
-fnacc-flang -O3 -c kernels.f90 -o kernels.o
-fnacc-flang -O3 -c main.f90 -o main.o
-fnacc-flang main.o kernels.o -o example
+TileOffload-flang -O3 -c kernels.f90 -o kernels.o
+TileOffload-flang -O3 -c main.f90 -o main.o
+TileOffload-flang main.o kernels.o -o example
 ```
 
-FnACC objects are conventional relocatable objects. Each can contain its own
+TileOffload objects are conventional relocatable objects. Each can contain its own
 embedded device bundle, and multiple bundles may be linked into the same
-executable. For HIP, repeat `--fnacc-target hip` on every FnACC compilation and
-on the final link so the driver selects `FortranFNACCRuntimeHIP`.
+executable. For HIP, repeat `--TileOffload-target hip` on every TileOffload compilation and
+on the final link so the driver selects `FortranTileOffloadRuntimeHIP`.
 
 ## Programming model
 
 ### Parallel loops
 
-`!$fnacc parallel` applies to the immediately following `do` construct. There
+`!$tileoff parallel` applies to the immediately following `do` construct. There
 is no matching end directive.
 
 ```fortran
-!$fnacc parallel tile(128)
+!$tileoff parallel tile(128)
 do i = lower, upper
   c(i) = a(i) + b(i)
 end do
@@ -306,7 +306,7 @@ For a rank-two kernel, the outer loop normally represents the second Fortran
 dimension and the inner loop the first:
 
 ```fortran
-!$fnacc parallel tile(16, 16)
+!$tileoff parallel tile(16, 16)
 do k = y_min, y_max
   do j = x_min, x_max
     c(j, k) = alpha * a(j, k) + beta * b(j, k)
@@ -363,22 +363,22 @@ Default logical tiles are:
 | f32 matrix multiplication | `16, 16, 32` |
 | f64 matrix multiplication | `16, 16, 8` |
 
-Use `FNACC_DEBUG=1` to print the grid, logical tile, subgroup, and hardware
+Use `tileoff_DEBUG=1` to print the grid, logical tile, subgroup, and hardware
 block selected for each launch. The generated per-kernel JSON is the
 authoritative schedule.
 
 ## Directive reference
 
-FnACC directives are case-insensitive. The recommended free-form sentinel is
-`!$fnacc`. The frontend also accepts `!@fnacc`; fixed-form sentinel handling
+TileOffload directives are case-insensitive. The recommended free-form sentinel is
+`!$tileoff`. The frontend also accepts `!@tileoff`; fixed-form sentinel handling
 depends on the Flang source form in use. The driver primarily scans
-conventional FnACC sentinels when deciding whether to run the accelerator
+conventional TileOffload sentinels when deciding whether to run the accelerator
 pipeline.
 
 ### `parallel`
 
 ```fortran
-!$fnacc parallel [tile(...)] [pack(...)] [reduction(...)] [matmul_precision(...)] [no_copyback]
+!$tileoff parallel [tile(...)] [pack(...)] [reduction(...)] [matmul_precision(...)] [no_copyback]
 do ...
   ...
 end do
@@ -403,16 +403,16 @@ sections. Data directives have broader designator support.
 
 | Directive | Behavior |
 | --- | --- |
-| `!$fnacc enter data copyin(a)` | Begin a nested data region, acquire persistent device storage for `a`, and copy its current host value on a new allocation. |
-| `!$fnacc enter data create(c)` | Begin a nested data region and acquire persistent storage for `c` without initializing a new device allocation from the host. |
-| `!$fnacc present(a, c)` | Assert that every listed object already has a live device allocation. It neither allocates nor transfers data. |
-| `!$fnacc update device(a)` | Create or resize persistent storage as required and copy the current host value to the device. |
-| `!$fnacc update host(c)` | Copy a present device allocation to the host. Fails when the object is not present. |
-| `!$fnacc exit data copyout(c)` | Request a host update when the innermost region is the final owner, then end that region. |
-| `!$fnacc exit data delete(a, b, c)` | Mark listed objects as belonging to the innermost region and release that region's ownership on exit. |
-| `!$fnacc release(a, b)` | Release unowned persistent allocations. It cannot release an allocation still owned by an active data region. |
-| `!$fnacc release all` | Release all persistent allocations when no data region is active. `release_all` is an alias. |
-| `!$fnacc wait` | Wait for prior work on the active FnACC context's stream. It performs no transfer. |
+| `!$tileoff enter data copyin(a)` | Begin a nested data region, acquire persistent device storage for `a`, and copy its current host value on a new allocation. |
+| `!$tileoff enter data create(c)` | Begin a nested data region and acquire persistent storage for `c` without initializing a new device allocation from the host. |
+| `!$tileoff present(a, c)` | Assert that every listed object already has a live device allocation. It neither allocates nor transfers data. |
+| `!$tileoff update device(a)` | Create or resize persistent storage as required and copy the current host value to the device. |
+| `!$tileoff update host(c)` | Copy a present device allocation to the host. Fails when the object is not present. |
+| `!$tileoff exit data copyout(c)` | Request a host update when the innermost region is the final owner, then end that region. |
+| `!$tileoff exit data delete(a, b, c)` | Mark listed objects as belonging to the innermost region and release that region's ownership on exit. |
+| `!$tileoff release(a, b)` | Release unowned persistent allocations. It cannot release an allocation still owned by an active data region. |
+| `!$tileoff release all` | Release all persistent allocations when no data region is active. `release_all` is an alias. |
+| `!$tileoff wait` | Wait for prior work on the active TileOffload context's stream. It performs no transfer. |
 
 An `enter data` directive creates one ownership frame even when it contains
 several clauses. Its matching `exit data` ends the innermost frame.
@@ -423,10 +423,10 @@ Use normal free-form directive continuation. Repeat the sentinel on each
 continued line and place `&` after the sentinel on continuation lines:
 
 ```fortran
-!$fnacc enter data &
-!$fnacc& copyin(chunk%tiles(1)%field%density0) &
-!$fnacc& copyin(chunk%tiles(1)%field%energy0) &
-!$fnacc& create(chunk%tiles(1)%field%pressure)
+!$tileoff enter data &
+!$tileoff& copyin(chunk%tiles(1)%field%density0) &
+!$tileoff& copyin(chunk%tiles(1)%field%energy0) &
+!$tileoff& create(chunk%tiles(1)%field%pressure)
 ```
 
 Do not continue a directive using an ordinary, non-directive source line.
@@ -437,17 +437,17 @@ Data directives accept Fortran variables and derived-component designators,
 including component chains with scalar subscripts:
 
 ```fortran
-!$fnacc enter data &
-!$fnacc& copyin(chunk%tiles(1)%field%density0) &
-!$fnacc& create(chunk%tiles(1)%field%energy0)
+!$tileoff enter data &
+!$tileoff& copyin(chunk%tiles(1)%field%density0) &
+!$tileoff& create(chunk%tiles(1)%field%energy0)
 
-!$fnacc present(chunk%tiles(1)%field%density0)
-!$fnacc update host(chunk%tiles(1)%field%energy0)
+!$tileoff present(chunk%tiles(1)%field%density0)
+!$tileoff update host(chunk%tiles(1)%field%energy0)
 
-!$fnacc exit data &
-!$fnacc& copyout(chunk%tiles(1)%field%energy0) &
-!$fnacc& delete(chunk%tiles(1)%field%density0, &
-!$fnacc&        chunk%tiles(1)%field%energy0)
+!$tileoff exit data &
+!$tileoff& copyout(chunk%tiles(1)%field%energy0) &
+!$tileoff& delete(chunk%tiles(1)%field%density0, &
+!$tileoff&        chunk%tiles(1)%field%energy0)
 ```
 
 Allocatable and pointer components are lowered through their descriptors.
@@ -495,7 +495,7 @@ Use `no_copyback` when the values written by a launch will be consumed by
 later device work:
 
 ```fortran
-!$fnacc parallel tile(16,16) no_copyback
+!$tileoff parallel tile(16,16) no_copyback
 do k = y_min, y_max
   do j = x_min, x_max
     pressure(j,k) = (1.4_8 - 1.0_8) * density(j,k) * energy(j,k)
@@ -517,7 +517,7 @@ The selected behavior is recorded in kernel JSON as
 `present` is an assertion and has no OpenACC-style fallback allocation:
 
 ```fortran
-!$fnacc present(density, energy, pressure)
+!$tileoff present(density, energy, pressure)
 ```
 
 It is useful at procedure boundaries to catch a missing enclosing data region.
@@ -531,20 +531,20 @@ Data regions are stack structured. An inner region may acquire new objects or
 share objects already owned by an outer region:
 
 ```fortran
-!$fnacc enter data copyin(a) create(c)
+!$tileoff enter data copyin(a) create(c)
 
 ! Outer work may use a and c.
 
-!$fnacc enter data copyin(a, b) create(tmp)
-!$fnacc present(a, b, c, tmp)
+!$tileoff enter data copyin(a, b) create(tmp)
+!$tileoff present(a, b, c, tmp)
 
 ! Inner work may use a, b, c, and tmp.
 
-!$fnacc exit data copyout(b) delete(a, b, tmp)
+!$tileoff exit data copyout(b) delete(a, b, tmp)
 
 ! a and c are still controlled by the outer region.
 
-!$fnacc exit data copyout(c) delete(a, c)
+!$tileoff exit data copyout(c) delete(a, c)
 ```
 
 The runtime reference-counts region ownership:
@@ -566,20 +566,20 @@ ownership; close the owning region first.
 ### Recommended long-lived pattern
 
 ```fortran
-!$fnacc enter data copyin(a, b) create(c, work)
+!$tileoff enter data copyin(a, b) create(c, work)
 
 do step = 1, timesteps
   call kernel_a(n, a, b, work)
   call kernel_b(n, work, c)
 end do
 
-!$fnacc exit data copyout(c) delete(a, b, c, work)
+!$tileoff exit data copyout(c) delete(a, b, c, work)
 ```
 
 If host code changes `a` during the region, add:
 
 ```fortran
-!$fnacc update device(a)
+!$tileoff update device(a)
 ```
 
 before its next device consumer.
@@ -590,17 +590,17 @@ The runtime owns one nonblocking CUDA or HIP stream and one completion event
 per accelerator context. Work submitted through the same context is ordered in
 that stream.
 
-Use `!$fnacc wait`:
+Use `!$tileoff wait`:
 
 - before host code that needs completion but not a host transfer;
 - before external CUDA or HIP work whose stream has no explicit dependency on
-  the FnACC stream;
+  the TileOffload stream;
 - as a phase boundary before changing device or context ownership; or
 - in tests that require completion at a precise source point.
 
 Host updates, final copyouts, reductions that return host scalars, releases,
 and host-target launch paths are synchronization points in the current
-runtime. `wait` covers only the active FnACC context and its runtime stream; it
+runtime. `wait` covers only the active TileOffload context and its runtime stream; it
 does not synchronize unrelated CUDA/HIP contexts or caller-created streams.
 
 ## Supported kernels
@@ -611,7 +611,7 @@ Rank-one and rank-two loops may contain recognised expressions and one or more
 array stores:
 
 ```fortran
-!$fnacc parallel tile(128)
+!$tileoff parallel tile(128)
 do i = lower, upper
   sum(i) = a(i) + b(i)
   difference(i) = a(i) - b(i)
@@ -647,7 +647,7 @@ scalars. Supported patterns include:
 Example:
 
 ```fortran
-!$fnacc parallel tile(16,16)
+!$tileoff parallel tile(16,16)
 do k = y_min, y_max
   do j = x_min, x_max+2
     if (flux(j,k) < 0.0_8) then
@@ -666,7 +666,7 @@ do k = y_min, y_max
 end do
 ```
 
-FnACC masks the output domain. The program is responsible for declaring and
+TileOffload masks the output domain. The program is responsible for declaring and
 maintaining sufficient halo storage for every input offset.
 
 Indirect gathers through arbitrary array-valued indices, data-dependent loop
@@ -677,7 +677,7 @@ bounds, and loop-carried stencil dependences remain unsupported.
 The matrix-multiplication recogniser accepts the canonical three-loop form:
 
 ```fortran
-!$fnacc parallel tile(16,16,32)
+!$tileoff parallel tile(16,16,32)
 do j = 1, n
   do i = 1, m
     acc = 0.0
@@ -697,7 +697,7 @@ zero-padded so partial tiles do not contribute undefined values. To opt into
 reduced-precision tensor-core input arithmetic on supported NVIDIA GPUs:
 
 ```fortran
-!$fnacc parallel tile(64,64,32) matmul_precision(tf32)
+!$tileoff parallel tile(64,64,32) matmul_precision(tf32)
 ```
 
 | Mode | Behavior |
@@ -717,9 +717,9 @@ acceptance criteria; do not change validation tolerances merely to hide errors.
 Select the f64 code-generation strategy with:
 
 ```sh
-fnacc-flang --fnacc-f64-matmul-strategy reduce ...
-fnacc-flang --fnacc-f64-matmul-strategy fma ...
-fnacc-flang --fnacc-f64-matmul-strategy dot ...
+TileOffload-flang --TileOffload-f64-matmul-strategy reduce ...
+TileOffload-flang --TileOffload-f64-matmul-strategy fma ...
+TileOffload-flang --TileOffload-f64-matmul-strategy dot ...
 ```
 
 Performance and toolchain compatibility are GPU- and Triton-version
@@ -783,7 +783,7 @@ classified separately as index captures.
 
 ### Iteration-private temporaries
 
-FnACC has no source-level `private` clause. A mutable scalar reference is
+TileOffload has no source-level `private` clause. A mutable scalar reference is
 promoted to device SSA and treated as private to one logical iteration only
 when the compiler proves that it:
 
@@ -794,7 +794,7 @@ when the compiler proves that it:
 - is not observed by host code after the launch.
 
 ```fortran
-!$fnacc parallel tile(128)
+!$tileoff parallel tile(128)
 do i = lower, upper
   tmp = alpha * a(i)
   c(i) = tmp + b(i)
@@ -808,29 +808,29 @@ Unsafe mutable references fail compilation with a diagnostic such as
 
 ### One-dimensional reductions
 
-FnACC recognises sum, dot product, product, minimum, and maximum patterns:
+TileOffload recognises sum, dot product, product, minimum, and maximum patterns:
 
 ```fortran
 sum = 0.0
-!$fnacc parallel tile(256) reduction(+:sum)
+!$tileoff parallel tile(256) reduction(+:sum)
 do i = lower, upper
   sum = sum + a(i)
 end do
 
 dot = 0.0
-!$fnacc parallel tile(256) reduction(+:dot)
+!$tileoff parallel tile(256) reduction(+:dot)
 do i = lower, upper
   dot = dot + a(i) * b(i)
 end do
 
 product = 1.0
-!$fnacc parallel tile(256) reduction(*:product)
+!$tileoff parallel tile(256) reduction(*:product)
 do i = lower, upper
   product = product * a(i)
 end do
 
 smallest = huge(smallest)
-!$fnacc parallel tile(256) reduction(min:smallest)
+!$tileoff parallel tile(256) reduction(min:smallest)
 do i = lower, upper
   smallest = min(smallest, a(i))
 end do
@@ -845,8 +845,8 @@ A two-dimensional traversal may produce several reductions in one launch when
 all results have the same type and use one common operator:
 
 ```fortran
-!$fnacc parallel tile(16,16) &
-!$fnacc& reduction(+:volume_sum, +:mass_sum, +:energy_sum)
+!$tileoff parallel tile(16,16) &
+!$tileoff& reduction(+:volume_sum, +:mass_sum, +:energy_sum)
 do k = y_min, y_max
   do j = x_min, x_max
     volume_sum = volume_sum + volume(j,k)
@@ -870,12 +870,12 @@ Partial and scratch buffers are cached as grow-only workspaces per accelerator
 context. Repeated reductions reuse those allocations.
 
 ```sh
-FNACC_REDUCTION_STATS=1 ./program
+tileoff_REDUCTION_STATS=1 ./program
 ```
 
 prints allocation, growth, reuse, capacity, primary-launch, and stage-launch
 counters at process exit. These workspace counters cover the original partial
-and scratch buffers, not every auxiliary result allocation. `FNACC_DEBUG=1` prints individual stages.
+and scratch buffers, not every auxiliary result allocation. `tileoff_DEBUG=1` prints individual stages.
 
 The revised multi-result finalization path enqueues the final reduction stages
 and preserves each result in a packed device buffer. The device-stage path uses
@@ -915,11 +915,11 @@ would otherwise leave stale identity and size information.
 
 ### Driver pipeline
 
-For an FnACC source, `fnacc-flang` performs:
+For an TileOffload source, `TileOffload-flang` performs:
 
 1. a syntax-only Flang invocation to generate module files;
 2. FIR emission;
-3. the `fnacc-pipeline`, producing host FIR, device IR, and JSON;
+3. the `TileOffload-pipeline`, producing host FIR, device IR, and JSON;
 4. per-kernel device-IR splitting;
 5. TTIR-to-TritonGPU lowering;
 6. TritonGPU-to-LLVM-MLIR lowering;
@@ -935,27 +935,27 @@ The result of `-c` is a conventional relocatable object containing host code,
 the embedded device bundle, metadata, and its registration constructor. No
 sidecar PTX, HSACO, or JSON files are required at run time.
 
-### Data-only FnACC sources
+### Data-only TileOffload sources
 
-A source containing FnACC data or synchronization directives but no
+A source containing TileOffload data or synchronization directives but no
 `parallel` kernel is valid. The driver runs the frontend and host runtime
 lowering, detects that the generated kernel list is empty, skips device code
-generation and embedding, and emits a host-only FnACC object.
+generation and embedding, and emits a host-only TileOffload object.
 
-`FNACC_ALLOW_EMPTY_KERNELS=1` is not required for this case. It is only an
-escape hatch when a source contains an FnACC `parallel` launch but the pipeline
+`tileoff_ALLOW_EMPTY_KERNELS=1` is not required for this case. It is only an
+escape hatch when a source contains an TileOffload `parallel` launch but the pipeline
 unexpectedly emits no kernel; the default is to diagnose that inconsistency.
 
 ### Ordinary Fortran sources
 
-Sources without a recognised FnACC sentinel are delegated to the configured
+Sources without a recognised TileOffload sentinel are delegated to the configured
 Flang driver. `-E`, `-S`, and `-fsyntax-only` are also delegated and do not run
-accelerator code generation. Use `--fnacc-force` or `--fnacc-disable` to
+accelerator code generation. Use `--TileOffload-force` or `--TileOffload-disable` to
 override source auto-detection.
 
 ### Separate compilation and multiple bundles
 
-Multiple FnACC sources, objects, and archives may contribute embedded bundles
+Multiple TileOffload sources, objects, and archives may contribute embedded bundles
 to one executable. The driver assigns a stable per-source bundle key so kernel
 IDs remain disjoint across separately compiled inputs, while direct
 `fir-opt` tests retain predictable sequential IDs.
@@ -963,23 +963,23 @@ IDs remain disjoint across separately compiled inputs, while direct
 The runtime validates bundle registration and diagnoses kernel identity/name
 collisions rather than silently choosing one definition.
 
-FnACC-host objects also use normal Flang external procedure ABI names when
-calling procedures defined in ordinary Flang objects. Top-level FnACC
+TileOffload-host objects also use normal Flang external procedure ABI names when
+calling procedures defined in ordinary Flang objects. Top-level TileOffload
 definitions expose the corresponding trailing-underscore compatibility entry
-point, allowing mixed FnACC/plain object links.
+point, allowing mixed TileOffload/plain object links.
 
 ### Runtime linking
 
-When it detects FnACC code, the driver adds the runtime matching
-`--fnacc-target`:
+When it detects TileOffload code, the driver adds the runtime matching
+`--TileOffload-target`:
 
 ```text
-cuda: -L$LLVM_BUILD/lib -lFortranFNACCRuntime    -lcuda     -lstdc++
-hip:  -L$LLVM_BUILD/lib -lFortranFNACCRuntimeHIP -lamdhip64 -lstdc++
+cuda: -L$LLVM_BUILD/lib -lFortranTileOffloadRuntime    -lcuda     -lstdc++
+hip:  -L$LLVM_BUILD/lib -lFortranTileOffloadRuntimeHIP -lamdhip64 -lstdc++
 ```
 
 with appropriate runtime search paths. Object and archive inputs are scanned
-for FnACC symbols. Use `--fnacc-runtime` when FnACC code is visible only
+for TileOffload symbols. Use `--TileOffload-runtime` when TileOffload code is visible only
 through `-lNAME` and cannot be detected from a named input file. The link
 target must match the target used to compile every embedded bundle.
 
@@ -991,55 +991,55 @@ The wrapper accepts normal compile/link options including `-c`, `-o`, `-I`,
 `-J`, `-L`, `-l`, `-D`, `-U`, `-O`, `-g`, `-f...`, `-m...`, `-Wl,...`, and `--`.
 Flags are routed to the relevant frontend, host-codegen, or final-link stage.
 
-### FnACC options
+### TileOffload options
 
 | Option | Meaning |
 | --- | --- |
-| `--fnacc-force` | Run FnACC lowering for every Fortran source. |
-| `--fnacc-disable` | Delegate every source to Flang. |
-| `--fnacc-runtime` | Force FnACC runtime libraries into the final link. |
-| `--fnacc-no-runtime` | Do not add the runtime automatically. |
-| `--fnacc-launch-abi N` | Host launch ABI: `3` by default, or explicit `2` compatibility. |
-| `--fnacc-target NAME` | Accelerator platform: `cuda` (default) or `hip`. The spellings `nvidia`, `amd`, and `rocm` are normalized. |
-| `--fnacc-gpu-arch ARCH` | Target architecture such as `sm_90a`, `gfx90a`, or `gfx942`. |
-| `--fnacc-sm N` | CUDA compatibility option accepting `80`, `sm_80`, `cc80`, or `sm_90a`. |
-| `--fnacc-amd-arch ARCH` | Compatibility spelling that selects HIP and an AMD `gfx...` architecture. |
-| `--fnacc-backend NAME` | Preferred backend; default `auto`. |
-| `--fnacc-fallback-backend NAME` | Backend used when the preferred backend rejects a kernel; default `triton`. |
-| `--fnacc-backend-fallback` | Enable fallback; currently the default. |
-| `--fnacc-no-backend-fallback` | Fail instead of using the fallback backend. |
-| `--fnacc-num-warps N` | Requested warps per CTA; a power of two and at most 32. |
-| `--fnacc-threads-per-warp N` | Subgroup width. CUDA requires `32`; HIP accepts `32` or `64`. |
-| `--fnacc-num-stages N` | Triton pipeline stages, currently 1 through 16. |
-| `--fnacc-f64-matmul-strategy NAME` | `reduce`, `fma`, or `dot`. |
-| `--fnacc-cuda-lib-dir DIR` | CUDA Driver API library directory. |
-| `--fnacc-cuda-libdevice FILE` | CUDA `libdevice.10.bc`; normally auto-detected. |
-| `--fnacc-rocm-path DIR` | ROCm installation prefix; default `ROCM_PATH` or `/opt/rocm`. |
-| `--fnacc-rocm-device-lib-dir DIR` | Directory containing ROCm device bitcode such as `ocml.bc` and `ockl.bc`. |
-| `--fnacc-hip-lib-dir DIR` | Directory containing `libamdhip64`. |
-| `--fnacc-workdir DIR` | Parent directory for a unique intermediate tree. |
-| `--fnacc-keep` | Keep intermediate files. |
-| `--fnacc-verbose` | Print commands before executing them. |
-| `--fnacc-dry-run` | Print commands without executing them. |
-| `--fnacc-stop-after STAGE` | Stop one FnACC source after an internal stage. |
+| `--TileOffload-force` | Run TileOffload lowering for every Fortran source. |
+| `--TileOffload-disable` | Delegate every source to Flang. |
+| `--TileOffload-runtime` | Force TileOffload runtime libraries into the final link. |
+| `--TileOffload-no-runtime` | Do not add the runtime automatically. |
+| `--TileOffload-launch-abi N` | Host launch ABI: `3` by default, or explicit `2` compatibility. |
+| `--TileOffload-target NAME` | Accelerator platform: `cuda` (default) or `hip`. The spellings `nvidia`, `amd`, and `rocm` are normalized. |
+| `--TileOffload-gpu-arch ARCH` | Target architecture such as `sm_90a`, `gfx90a`, or `gfx942`. |
+| `--TileOffload-sm N` | CUDA compatibility option accepting `80`, `sm_80`, `cc80`, or `sm_90a`. |
+| `--TileOffload-amd-arch ARCH` | Compatibility spelling that selects HIP and an AMD `gfx...` architecture. |
+| `--TileOffload-backend NAME` | Preferred backend; default `auto`. |
+| `--TileOffload-fallback-backend NAME` | Backend used when the preferred backend rejects a kernel; default `triton`. |
+| `--TileOffload-backend-fallback` | Enable fallback; currently the default. |
+| `--TileOffload-no-backend-fallback` | Fail instead of using the fallback backend. |
+| `--TileOffload-num-warps N` | Requested warps per CTA; a power of two and at most 32. |
+| `--TileOffload-threads-per-warp N` | Subgroup width. CUDA requires `32`; HIP accepts `32` or `64`. |
+| `--TileOffload-num-stages N` | Triton pipeline stages, currently 1 through 16. |
+| `--TileOffload-f64-matmul-strategy NAME` | `reduce`, `fma`, or `dot`. |
+| `--TileOffload-cuda-lib-dir DIR` | CUDA Driver API library directory. |
+| `--TileOffload-cuda-libdevice FILE` | CUDA `libdevice.10.bc`; normally auto-detected. |
+| `--TileOffload-rocm-path DIR` | ROCm installation prefix; default `ROCM_PATH` or `/opt/rocm`. |
+| `--TileOffload-rocm-device-lib-dir DIR` | Directory containing ROCm device bitcode such as `ocml.bc` and `ockl.bc`. |
+| `--TileOffload-hip-lib-dir DIR` | Directory containing `libamdhip64`. |
+| `--TileOffload-workdir DIR` | Parent directory for a unique intermediate tree. |
+| `--TileOffload-keep` | Keep intermediate files. |
+| `--TileOffload-verbose` | Print commands before executing them. |
+| `--TileOffload-dry-run` | Print commands without executing them. |
+| `--TileOffload-stop-after STAGE` | Stop one TileOffload source after an internal stage. |
 
-Compatibility aliases without the `fnacc-` prefix are accepted for schedule,
+Compatibility aliases without the `TileOffload-` prefix are accepted for schedule,
 work-directory, verbosity, and stop controls.
 
-Useful stop stages include `modgen`, `fir`, `fnacc-pipeline`, `ttgir`,
+Useful stop stages include `modgen`, `fir`, `TileOffload-pipeline`, `ttgir`,
 `llvm-mlir`, `llvm-ir`, `ptx`, `hsaco`, `device-image`, `embed`, `host-ll`,
 `host-obj`, `object`, `objects`, and `link`.
 
 ```sh
-fnacc-flang --fnacc-verbose --fnacc-keep \
-  --fnacc-stop-after fnacc-pipeline -c kernels.f90
+TileOffload-flang --TileOffload-verbose --TileOffload-keep \
+  --TileOffload-stop-after TileOffload-pipeline -c kernels.f90
 ```
 
 ### Driver environment variables
 
 | Variable | Purpose |
 | --- | --- |
-| `LLVM_BUILD` | FnACC-enabled LLVM/Flang build directory. |
+| `LLVM_BUILD` | TileOffload-enabled LLVM/Flang build directory. |
 | `TRITON_OPT` | `triton-opt` executable. |
 | `MLIR_TRANSLATE` | Matching `mlir-translate`. |
 | `LLC` | Matching `llc` used to emit PTX or an AMDGPU object. |
@@ -1049,28 +1049,28 @@ fnacc-flang --fnacc-verbose --fnacc-keep \
 | `FLANG`, `FIROPT`, `TCO`, `CLANG` | Optional tool overrides. |
 | `FLANG_INTRINSIC_MODULES_PATH` | Override Flang's intrinsic-module directory. |
 | `CUDA_LIB_DIR` | CUDA Driver API library directory. |
-| `FNACC_CUDA_LIBDEVICE` | CUDA `libdevice.10.bc` override. The driver auto-detects it when generated IR references `__nv_*`. |
+| `tileoff_CUDA_LIBDEVICE` | CUDA `libdevice.10.bc` override. The driver auto-detects it when generated IR references `__nv_*`. |
 | `ROCM_PATH` | ROCm installation prefix; default `/opt/rocm`. |
-| `FNACC_ROCM_DEVICE_LIB_DIR` | ROCm bitcode directory containing OCML/OCKL and control bitcode. |
-| `FNACC_HIP_LIB_DIR` | Directory containing `libamdhip64`; defaults to `$ROCM_PATH/lib` or `lib64`. |
-| `FNACC_LAUNCH_ABI` | Default host launch ABI; `3`. An explicit `--fnacc-launch-abi` overrides it. |
-| `FNACC_TARGET` | Default accelerator target: `cuda` or `hip`. |
-| `FNACC_GPU_ARCH` | Default target architecture such as `sm_90a` or `gfx942`. |
-| `FNACC_SM` | CUDA architecture compatibility variable. |
-| `FNACC_AMD_GPU_ARCH` | AMD architecture compatibility variable; default `gfx90a` when HIP is selected and no architecture is supplied. |
-| `FNACC_BACKEND` | Preferred backend; default `auto`. |
-| `FNACC_FALLBACK_BACKEND` | Fallback backend; default `triton`. |
-| `FNACC_ALLOW_BACKEND_FALLBACK` | Boolean backend-fallback control. |
-| `FNACC_NUM_WARPS` | Requested warp count; current default `1`. |
-| `FNACC_THREADS_PER_WARP` | Subgroup width; current default `32`. |
-| `FNACC_NUM_STAGES` | Pipeline stages; current default `3`. |
-| `FNACC_F64_MATMUL_STRATEGY` | Default f64 matmul strategy. |
-| `FNACC_WORKDIR` | Intermediate-directory parent. |
-| `FNACC_TTIR_TO_TTGIR_PASSES` | Advanced TTIR-to-TTGIR pass-pipeline override. |
-| `FNACC_TTGIR_TO_LLVM_PASSES` | Advanced TTGIR-to-LLVM-MLIR pass-pipeline override. |
-| `FNACC_HIP_TTIR_TO_TTGIR_PASSES` | HIP-only TTIR-to-TritonGPU pass-pipeline override. |
-| `FNACC_HIP_TTGIR_TO_LLVM_PASSES` | HIP-only TritonGPU-to-LLVM-MLIR pass-pipeline override. |
-| `FNACC_ALLOW_EMPTY_KERNELS` | Permit an empty kernel list despite an FnACC `parallel` launch; default false. Data-only sources do not need it. |
+| `tileoff_ROCM_DEVICE_LIB_DIR` | ROCm bitcode directory containing OCML/OCKL and control bitcode. |
+| `tileoff_HIP_LIB_DIR` | Directory containing `libamdhip64`; defaults to `$ROCM_PATH/lib` or `lib64`. |
+| `tileoff_LAUNCH_ABI` | Default host launch ABI; `3`. An explicit `--TileOffload-launch-abi` overrides it. |
+| `tileoff_TARGET` | Default accelerator target: `cuda` or `hip`. |
+| `tileoff_GPU_ARCH` | Default target architecture such as `sm_90a` or `gfx942`. |
+| `tileoff_SM` | CUDA architecture compatibility variable. |
+| `tileoff_AMD_GPU_ARCH` | AMD architecture compatibility variable; default `gfx90a` when HIP is selected and no architecture is supplied. |
+| `tileoff_BACKEND` | Preferred backend; default `auto`. |
+| `tileoff_FALLBACK_BACKEND` | Fallback backend; default `triton`. |
+| `tileoff_ALLOW_BACKEND_FALLBACK` | Boolean backend-fallback control. |
+| `tileoff_NUM_WARPS` | Requested warp count; current default `1`. |
+| `tileoff_THREADS_PER_WARP` | Subgroup width; current default `32`. |
+| `tileoff_NUM_STAGES` | Pipeline stages; current default `3`. |
+| `tileoff_F64_MATMUL_STRATEGY` | Default f64 matmul strategy. |
+| `tileoff_WORKDIR` | Intermediate-directory parent. |
+| `tileoff_TTIR_TO_TTGIR_PASSES` | Advanced TTIR-to-TTGIR pass-pipeline override. |
+| `tileoff_TTGIR_TO_LLVM_PASSES` | Advanced TTGIR-to-LLVM-MLIR pass-pipeline override. |
+| `tileoff_HIP_TTIR_TO_TTGIR_PASSES` | HIP-only TTIR-to-TritonGPU pass-pipeline override. |
+| `tileoff_HIP_TTGIR_TO_LLVM_PASSES` | HIP-only TritonGPU-to-LLVM-MLIR pass-pipeline override. |
+| `tileoff_ALLOW_EMPTY_KERNELS` | Permit an empty kernel list despite an TileOffload `parallel` launch; default false. Data-only sources do not need it. |
 
 The work directory must be writable and contain no whitespace because some
 toolchain components and generated command lines require whitespace-free
@@ -1080,45 +1080,45 @@ intermediate paths.
 
 | Variable | Purpose |
 | --- | --- |
-| `FNACC_DEVICE` | Device ordinal for either runtime. Takes precedence over the vendor-specific variable; default `0`. |
-| `FNACC_CUDA_DEVICE` | CUDA device ordinal when `FNACC_DEVICE` is unset. |
-| `FNACC_HIP_DEVICE` | HIP device ordinal when `FNACC_DEVICE` is unset. |
-| `FNACC_USE_CURRENT_CONTEXT` | Use the caller's current CUDA or HIP context instead of retaining a primary context. |
-| `FNACC_ASYNC_RESIDENT` | Set to `1` to enqueue eligible cached-array launches without waiting after each launch; unset/default retains synchronous completion. |
-| `FNACC_DEBUG` | Print initialization, bundle, cache, data-region, launch, grid, tile, ABI, and reduction diagnostics. |
-| `FNACC_REDUCTION_STATS` | Print aggregate reduction-workspace counters at exit. |
-| `FNACC_MATMUL_SHARED_BYTES` | Advanced f32 matmul dynamic-shared-memory override; cannot be below the computed safe minimum. |
-| `FNACC_MATMUL_F64_SHARED_BYTES` | Advanced f64 matmul dynamic-shared-memory override; cannot be below the computed safe minimum. |
-| `FNACC_PTX_DIR`, `FNACC_PTX`, `FNACC_KERNELS_JSON` | Legacy CUDA external-bundle debugging fallbacks. Driver-built objects normally use embedded images and JSON. |
+| `tileoff_DEVICE` | Device ordinal for either runtime. Takes precedence over the vendor-specific variable; default `0`. |
+| `tileoff_CUDA_DEVICE` | CUDA device ordinal when `tileoff_DEVICE` is unset. |
+| `tileoff_HIP_DEVICE` | HIP device ordinal when `tileoff_DEVICE` is unset. |
+| `tileoff_USE_CURRENT_CONTEXT` | Use the caller's current CUDA or HIP context instead of retaining a primary context. |
+| `tileoff_ASYNC_RESIDENT` | Set to `1` to enqueue eligible cached-array launches without waiting after each launch; unset/default retains synchronous completion. |
+| `tileoff_DEBUG` | Print initialization, bundle, cache, data-region, launch, grid, tile, ABI, and reduction diagnostics. |
+| `tileoff_REDUCTION_STATS` | Print aggregate reduction-workspace counters at exit. |
+| `tileoff_MATMUL_SHARED_BYTES` | Advanced f32 matmul dynamic-shared-memory override; cannot be below the computed safe minimum. |
+| `tileoff_MATMUL_F64_SHARED_BYTES` | Advanced f64 matmul dynamic-shared-memory override; cannot be below the computed safe minimum. |
+| `tileoff_PTX_DIR`, `tileoff_PTX`, `tileoff_KERNELS_JSON` | Legacy CUDA external-bundle debugging fallbacks. Driver-built objects normally use embedded images and JSON. |
 
 ### Asynchronous resident execution
 
 ```sh
-FNACC_ASYNC_RESIDENT=1 FNACC_DEVICE=0 ./program
+tileoff_ASYNC_RESIDENT=1 tileoff_DEVICE=0 ./program
 ```
 
 This is independent of the host launch ABI: selecting v3 does not enable async
 execution. Only eligible array launches whose allocations remain cached may
 return before device completion. Temporary/host-output paths and reductions
 returning host scalars retain synchronization. Host transfers and allocation
-lifetime operations order against queued work on the FnACC stream.
+lifetime operations order against queued work on the TileOffload stream.
 
 Use explicit waits around a timed sequence:
 
 ```fortran
 ! Warm up before measuring.
 call compute()
-!$fnacc wait
+!$tileoff wait
 
 t0 = wall_time()
 do r = 1, reps
   call compute()
 end do
-!$fnacc wait
+!$tileoff wait
 t1 = wall_time()
 
 ! Fetch results outside the timed interval if measuring resident compute.
-!$fnacc update host(c)
+!$tileoff update host(c)
 ```
 
 Without the second wait, the timer may measure submission rather than completed
@@ -1131,12 +1131,12 @@ performance measurement.
 
 The CUDA build uses the CUDA Driver API; the HIP build uses an internal adapter
 over the HIP runtime/module APIs. By default each initializes its platform,
-selects `FNACC_DEVICE` or the vendor-specific device variable, retains the
+selects `tileoff_DEVICE` or the vendor-specific device variable, retains the
 device's primary context, and restores the caller's previous current context on
 return.
 
-With `FNACC_USE_CURRENT_CONTEXT=1`, the caller must make a context for the
-selected platform current before entering FnACC. Runtime state is created for
+With `tileoff_USE_CURRENT_CONTEXT=1`, the caller must make a context for the
+selected platform current before entering TileOffload. Runtime state is created for
 that exact context and the runtime does not retain or release it. Using the
 option with no current context is a fatal error.
 
@@ -1165,42 +1165,42 @@ across calls.
 
 | Area | Principal files |
 | --- | --- |
-| Parse tree and syntax | `flang/include/flang/Parser/parse-tree-fnacc.h`, `flang/lib/Parser/fnacc-parsers.cpp` |
+| Parse tree and syntax | `flang/include/flang/Parser/parse-tree-TileOffload.h`, `flang/lib/Parser/TileOffload-parsers.cpp` |
 | Unparsing and semantics | `flang/lib/Parser/unparse.cpp`, `flang/lib/Semantics/resolve-names.cpp` |
 | PFT and FIR generation | `flang/include/flang/Lower/PFTBuilder.h`, `flang/lib/Lower/PFTBuilder.cpp`, `flang/lib/Lower/Bridge.cpp` |
-| FnACC dialect | `flang/include/flang/Optimizer/Dialect/FNACC/FNACCOps.td`, `FNACCDialect.td`, `flang/lib/Optimizer/Dialect/FNACC/FNACCDialect.cpp` |
-| Recognition and planning | `FNACCKernelAnalysis.h/.cpp`, `FNACCKernelPlan.h` |
-| Triton backend | `flang/lib/Optimizer/Dialect/FNACC/FNACCLowerToTriton.cpp` |
-| Host runtime lowering | `flang/lib/Optimizer/Dialect/FNACC/FNACCLowerToRuntime.cpp` |
-| External ABI aliases | `flang/lib/Optimizer/Dialect/FNACC/FNACCEmitFortranAliases.cpp` |
-| Pass pipeline | `FNACCPasses.td`, `FNACCPipelines.cpp` |
-| CUDA/HIP runtimes | `flang/lib/Runtime/FNACC/fnacc_runtime.cpp`, built as `FortranFNACCRuntime` or `FortranFNACCRuntimeHIP` |
-| Compiler wrapper | `FnAcc/bin/fnacc-flang` |
+| TileOffload dialect | `flang/include/flang/Optimizer/Dialect/TileOffload/TileOffloadOps.td`, `TileOffloadDialect.td`, `flang/lib/Optimizer/Dialect/TileOffload/TileOffloadDialect.cpp` |
+| Recognition and planning | `TileOffloadKernelAnalysis.h/.cpp`, `TileOffloadKernelPlan.h` |
+| Triton backend | `flang/lib/Optimizer/Dialect/TileOffload/TileOffloadLowerToTriton.cpp` |
+| Host runtime lowering | `flang/lib/Optimizer/Dialect/TileOffload/TileOffloadLowerToRuntime.cpp` |
+| External ABI aliases | `flang/lib/Optimizer/Dialect/TileOffload/TileOffloadEmitFortranAliases.cpp` |
+| Pass pipeline | `TileOffloadPasses.td`, `TileOffloadPipelines.cpp` |
+| CUDA/HIP runtimes | `flang/lib/Runtime/TileOffload/tileoff_runtime.cpp`, built as `FortranTileOffloadRuntime` or `FortranTileOffloadRuntimeHIP` |
+| Compiler wrapper | `TileOffload/bin/TileOffload-flang` |
 
 The FIR dialect includes:
 
-- `fnacc.launch` with tile sizes, pack targets, reduction metadata, and
+- `TileOffload.launch` with tile sizes, pack targets, reduction metadata, and
   `no_copyback` behavior;
-- `fnacc.terminator` for its single-block region;
-- `fnacc.data_region_enter` and `fnacc.data_region_exit`;
-- `fnacc.copyin`, `fnacc.create`, `fnacc.copyout`, and `fnacc.delete`;
-- `fnacc.present`, `fnacc.update_host`, and `fnacc.update_device`;
-- `fnacc.release`, `fnacc.release_all`, and `fnacc.wait`.
+- `TileOffload.terminator` for its single-block region;
+- `TileOffload.data_region_enter` and `TileOffload.data_region_exit`;
+- `TileOffload.copyin`, `TileOffload.create`, `TileOffload.copyout`, and `TileOffload.delete`;
+- `TileOffload.present`, `TileOffload.update_host`, and `TileOffload.update_device`;
+- `TileOffload.release`, `TileOffload.release_all`, and `TileOffload.wait`.
 
-Hand-written MLIR tests must terminate `fnacc.launch` with
-`fnacc.terminator`; `fir.end` is not the FnACC region terminator.
+Hand-written MLIR tests must terminate `TileOffload.launch` with
+`TileOffload.terminator`; `fir.end` is not the TileOffload region terminator.
 
 ### Pass pipeline
 
-The registered `fnacc-pipeline` performs:
+The registered `TileOffload-pipeline` performs:
 
-1. `fnacc-assign-kernel-ids` for stable per-bundle IDs and symbols;
+1. `TileOffload-assign-kernel-ids` for stable per-bundle IDs and symbols;
 2. recognition, planning, backend selection, device IR, and JSON emission;
-3. `fnacc-lower-to-runtime` for host launch and data calls; and
-4. optional `fnacc-emit-fortran-aliases` for external Fortran ABI
+3. `TileOffload-lower-to-runtime` for host launch and data calls; and
+4. optional `TileOffload-emit-fortran-aliases` for external Fortran ABI
    compatibility.
 
-`fnacc-outline-kernels` also exists for development experiments but is not a
+`TileOffload-outline-kernels` also exists for development experiments but is not a
 normal stage of the driver route.
 
 ### Recognition and consumed operations
@@ -1221,7 +1221,7 @@ The compiler constructs a host request containing launch dimensions, array
 records, scalar/index captures, and reduction-result records, then emits:
 
 ```text
-__fnacc_launch_v3(request_pointer)
+__tileoff_launch_v3(request_pointer)
 ```
 
 This replaces the generated sequence of begin/bind/commit calls. Scalar values
@@ -1233,18 +1233,18 @@ context guard; it does not change the numerical device kernel.
 
 ```sh
 # Default v3; an environment override can change this.
-fnacc-flang -O3 -c kernel.f90
+TileOffload-flang -O3 -c kernel.f90
 
-# Explicit selection overrides FNACC_LAUNCH_ABI.
-fnacc-flang --fnacc-launch-abi 3 -O3 -c kernel.f90
-fnacc-flang --fnacc-launch-abi 2 -O3 -c kernel.f90
+# Explicit selection overrides tileoff_LAUNCH_ABI.
+TileOffload-flang --TileOffload-launch-abi 3 -O3 -c kernel.f90
+TileOffload-flang --TileOffload-launch-abi 2 -O3 -c kernel.f90
 ```
 
-Both `fnacc-pipeline` and standalone `fnacc-lower-to-runtime` default to v3:
+Both `TileOffload-pipeline` and standalone `TileOffload-lower-to-runtime` default to v3:
 
 ```sh
-fir-opt --fnacc-pipeline="launch-abi=2 ttir-output=k.ttir json-output=k.json" input.fir
-fir-opt --fnacc-lower-to-runtime="launch-abi=2" input.fir
+fir-opt --TileOffload-pipeline="launch-abi=2 ttir-output=k.ttir json-output=k.json" input.fir
+fir-opt --TileOffload-lower-to-runtime="launch-abi=2" input.fir
 ```
 
 V3 lowering requires an explicit supported 64-bit `x86_64` or `aarch64` host
@@ -1254,8 +1254,8 @@ hand-written MLIR intended to test v3 must declare its actual supported target.
 
 ### V2 compatibility and device metadata
 
-V2 remains available through `__fnacc_begin_launch_v2`, typed
-`__fnacc_bind_*_v2` calls, and `__fnacc_commit_launch_v2`. Keep these runtime
+V2 remains available through `__tileoff_begin_launch_v2`, typed
+`__tileoff_bind_*_v2` calls, and `__tileoff_commit_launch_v2`. Keep these runtime
 symbols and their compatibility tests.
 
 **The host launch selection and JSON device launch ABI are different contracts.**
@@ -1264,19 +1264,19 @@ and backend-private argument accounting. Do not rename JSON fields, change their
 version to 3, or change runtime device-ABI checks just because v3 is the host
 default. No new device precision mode is implied by v3.
 
-Maintain the default consistently in the driver, `FNACCPipelines.cpp`, and
-`FNACCPasses.td`. Rebuild generated pass declarations through the normal build;
+Maintain the default consistently in the driver, `TileOffloadPipelines.cpp`, and
+`TileOffloadPasses.td`. Rebuild generated pass declarations through the normal build;
 do not edit generated files. The driver logs the selected host ABI and includes
 it in its toolchain fingerprint.
 
 ## Backend artifact contract
 
-Kernel recognition and scheduling are backend-neutral. `FNACCKernelPlan`
+Kernel recognition and scheduling are backend-neutral. `TileOffloadKernelPlan`
 contains stable identity, recognised expressions/accesses, tile and subgroup
 schedule, public ABI, pack bindings, copyback policy, and optional synthetic
 reduction-stage plans.
 
-`FNACCCodegenBackend` provides:
+`TileOffloadCodegenBackend` provides:
 
 - a backend name;
 - emitted device-IR and runtime image kinds;
@@ -1351,10 +1351,10 @@ For the measured H100 CloverLeaf long case, the confirmed configuration for
 `revert_kernel.f90` is:
 
 ```fortran
-!$fnacc parallel tile(256,1) no_copyback
+!$tileoff parallel tile(256,1) no_copyback
 ```
 
-with `--fnacc-num-warps 8 --fnacc-threads-per-warp 32`. Keep the original ideal-gas
+with `--TileOffload-num-warps 8 --TileOffload-threads-per-warp 32`. Keep the original ideal-gas
 arithmetic. This is an application-specific tuning result, not a replacement for
 all stencil or reduction tiles. Earlier interior `64,4` and halo-strip changes
 remain separate choices for other kernels. Halo strips should place the long
@@ -1363,7 +1363,7 @@ preserve each loop's bounds and corner dependencies when changing them.
 
 The paired long-run profiles showed the following accumulated device durations:
 
-| Kernel family | Previous FnACC | Tuned FnACC (`256,1`, 8 warps) | Matching earlier CUDA capture | Matching earlier OpenACC capture |
+| Kernel family | Previous TileOffload | Tuned TileOffload (`256,1`, 8 warps) | Matching earlier CUDA capture | Matching earlier OpenACC capture |
 | --- | ---: | ---: | ---: | ---: |
 | Ideal gas | 9.279 s | 7.845 s | 7.966 s | 8.827 s |
 | Reset, both loops | 8.529 s | 7.427 s | 7.412 s | 7.487 s |
@@ -1387,15 +1387,15 @@ hide host submission savings; small resident kernels are more sensitive to them.
 Keep intermediates for the exact source/configuration being measured:
 
 ```sh
-mkdir -p fnacc-inspect
-fnacc-flang --fnacc-target cuda --fnacc-gpu-arch sm_90a \
-  --fnacc-num-warps 8 --fnacc-threads-per-warp 32 \
-  --fnacc-keep --fnacc-workdir "$PWD/fnacc-inspect" \
+mkdir -p TileOffload-inspect
+TileOffload-flang --TileOffload-target cuda --TileOffload-gpu-arch sm_90a \
+  --TileOffload-num-warps 8 --TileOffload-threads-per-warp 32 \
+  --TileOffload-keep --TileOffload-workdir "$PWD/TileOffload-inspect" \
   -O3 -c reset_field_kernel.f90 -o reset_field_kernel.o
 
-rg --files fnacc-inspect | rg '\.ptx$'
-rg -n --glob '*.ptx' '\.entry' fnacc-inspect
-rg -n --glob '*.json' '"tile"|"num_warps"|"threads_per_cta"' fnacc-inspect
+rg --files TileOffload-inspect | rg '\.ptx$'
+rg -n --glob '*.ptx' '\.entry' TileOffload-inspect
+rg -n --glob '*.json' '"tile"|"num_warps"|"threads_per_cta"' TileOffload-inspect
 ```
 
 Retain normal application include/module flags and relink before measuring.
@@ -1415,13 +1415,13 @@ For CUDA tracing, use the application's normal single-process invocation and
 working directory, with a unique report name:
 
 ```sh
-FNACC_ASYNC_RESIDENT=1 nsys profile \
+tileoff_ASYNC_RESIDENT=1 nsys profile \
   --trace=cuda,nvtx --sample=none \
-  -o cloverleaf-fnacc ./clover_leaf
+  -o cloverleaf-TileOffload ./clover_leaf
 
 nsys stats \
   --report cuda_gpu_kern_sum,cuda_api_sum,cuda_gpu_mem_time_sum,cuda_gpu_mem_size_sum \
-  cloverleaf-fnacc.nsys-rep > cloverleaf-fnacc-summary.txt
+  cloverleaf-TileOffload.nsys-rep > cloverleaf-TileOffload-summary.txt
 ```
 
 NVTX ranges appear only if instrumentation is enabled; CUDA tracing does not
@@ -1442,7 +1442,7 @@ When GPU counter access is available, collect a few invocations of one kernel:
 
 ```sh
 # Replace ENTRY_NAME with the exact entry from the current generated PTX.
-FNACC_ASYNC_RESIDENT=1 ncu \
+tileoff_ASYNC_RESIDENT=1 ncu \
   --kernel-name-base function --kernel-name ENTRY_NAME \
   --launch-skip 10 --launch-count 3 --kill yes \
   --section LaunchStats --section Occupancy \
@@ -1478,10 +1478,10 @@ Run a focused test or directory with:
 
 ```sh
 "$LLVM_BUILD/bin/llvm-lit" -sv \
-  /path/to/llvm-project/flang/test/Lower/FNACC/fnacc-pipeline.f90
+  /path/to/llvm-project/flang/test/Lower/TileOffload/TileOffload-pipeline.f90
 
 "$LLVM_BUILD/bin/llvm-lit" -sv \
-  /path/to/llvm-project/flang/test/Lower/FNACC
+  /path/to/llvm-project/flang/test/Lower/TileOffload
 ```
 
 The suite covers parser/unparser behavior, semantics, FIR lowering,
@@ -1515,17 +1515,17 @@ The dedicated v3 test should cover:
 - identical device TTIR/JSON across host ABI selections where expected; and
 - unsupported host triples and invalid ABI selections.
 
-Keep checks for `fnacc.launch` IR, data transfers, release, and synchronization
+Keep checks for `TileOffload.launch` IR, data transfers, release, and synchronization
 operations unchanged unless their actual semantics change. V2 matmul argument
 checks cannot be migrated by merely renaming the callee: v3 passes a request
 pointer, and the corresponding request stores must be checked instead.
 
-Run both FnACC test directories:
+Run both TileOffload test directories:
 
 ```sh
 "$LLVM_BUILD/bin/llvm-lit" -sv \
-  /path/to/llvm-project/flang/test/FNACC \
-  /path/to/llvm-project/flang/test/Lower/FNACC
+  /path/to/llvm-project/flang/test/TileOffload \
+  /path/to/llvm-project/flang/test/Lower/TileOffload
 ```
 
 Files ending in `.before-v3-default`, `.before-v2-pin`, or `.bak` are editor
@@ -1537,7 +1537,7 @@ test has been migrated; run the suite and inspect remaining failures.
 
 ```sh
 cmake -S tests/reduction -B build/reduction \
-  -DFNACC_REDUCTION_TEST_DRIVER="$PWD/bin/fnacc-flang" \
+  -Dtileoff_REDUCTION_TEST_DRIVER="$PWD/bin/TileOffload-flang" \
   -DLLVM_BUILD="$LLVM_BUILD" \
   -DTRITON_OPT="$TRITON_OPT" \
   -DMLIR_TRANSLATE="$MLIR_TRANSLATE" \
@@ -1547,7 +1547,7 @@ cmake --build build/reduction
 ctest --test-dir build/reduction -V
 ```
 
-Configure with `-DFNACC_NUM_WARPS=4` to exercise multi-warp reductions.
+Configure with `-Dtileoff_NUM_WARPS=4` to exercise multi-warp reductions.
 
 ### CUDA and HIP smoke tests
 
@@ -1556,14 +1556,14 @@ on each available target before testing a full application:
 
 ```sh
 # NVIDIA
-fnacc-flang --fnacc-target cuda --fnacc-gpu-arch sm_90a \
+TileOffload-flang --TileOffload-target cuda --TileOffload-gpu-arch sm_90a \
   vector_add.f90 -O3 -o vector_add.cuda
-FNACC_DEBUG=1 FNACC_DEVICE=0 ./vector_add.cuda
+tileoff_DEBUG=1 tileoff_DEVICE=0 ./vector_add.cuda
 
 # AMD
-fnacc-flang --fnacc-target hip --fnacc-gpu-arch gfx942 \
+TileOffload-flang --TileOffload-target hip --TileOffload-gpu-arch gfx942 \
   vector_add.f90 -O3 -o vector_add.hip
-FNACC_DEBUG=1 FNACC_DEVICE=0 ./vector_add.hip
+tileoff_DEBUG=1 tileoff_DEVICE=0 ./vector_add.hip
 ```
 
 Use an architecture that exactly matches the installed GPU. The HIP path is
@@ -1572,15 +1572,15 @@ particularly sensitive to compatible Triton, LLVM, ROCm device-library, and
 
 ### Repeated BabelStream measurements
 
-`tools/fnacc-babelstream-stats.py` runs warm-ups and repeated measured trials,
+`tools/TileOffload-babelstream-stats.py` runs warm-ups and repeated measured trials,
 reports bandwidth statistics and robust outliers, and can preserve JSON:
 
 ```sh
-tools/fnacc-babelstream-stats.py \
+tools/TileOffload-babelstream-stats.py \
   --warmups 1 --runs 9 \
   --arraysize 33554432 --numtimes 100 \
-  --json fnacc-babelstream.json \
-  ./BabelStream.fnacc.FnACCArray
+  --json TileOffload-babelstream.json \
+  ./BabelStream.TileOffload.TileOffloadArray
 ```
 
 Use the same device visibility, device ordinal, clocks, array size, iteration
@@ -1590,9 +1590,9 @@ validation error is a failed benchmark regardless of reported bandwidth.
 ### Runtime debugging
 
 ```sh
-fnacc-flang --fnacc-keep --fnacc-verbose \
-  --fnacc-target TARGET --fnacc-gpu-arch ARCH -c kernel.f90
-FNACC_DEBUG=1 FNACC_DEVICE=0 ./program
+TileOffload-flang --TileOffload-keep --TileOffload-verbose \
+  --TileOffload-target TARGET --TileOffload-gpu-arch ARCH -c kernel.f90
+tileoff_DEBUG=1 tileoff_DEVICE=0 ./program
 ```
 
 For CUDA memory checking:
@@ -1605,17 +1605,17 @@ CUDA_LAUNCH_BLOCKING=1 compute-sanitizer \
 Validate results separately from timed launches, and keep required host
 updates outside the timed region.
 
-## Extending FnACC
+## Extending TileOffload
 
 ### Add or change directive syntax
 
-1. Add parse-tree nodes in `parse-tree-fnacc.h`.
-2. Add parsers in `fnacc-parsers.cpp` and executable-construct routing when
+1. Add parse-tree nodes in `parse-tree-TileOffload.h`.
+2. Add parsers in `TileOffload-parsers.cpp` and executable-construct routing when
    needed.
 3. Resolve contained variables and names in `resolve-names.cpp`.
 4. Add unparse support in `unparse.cpp`.
-5. Add PFT/Bridge lowering to an existing or new FnACC FIR operation.
-6. Define and verify the operation in `FNACCOps.td` and `FNACCDialect.cpp`.
+5. Add PFT/Bridge lowering to an existing or new TileOffload FIR operation.
+6. Define and verify the operation in `TileOffloadOps.td` and `TileOffloadDialect.cpp`.
 7. Lower it to the runtime or consume it in kernel planning.
 8. Add parser, unparser, semantics, FIR, runtime-lowering, and negative tests.
 
@@ -1627,7 +1627,7 @@ their current signature rather than an obsolete location-first overload.
 
 1. Extend `ElementwiseExprKind`.
 2. Recognise the exact FIR operation or Flang lowering idiom in
-   `FNACCKernelAnalysis.cpp`.
+   `TileOffloadKernelAnalysis.cpp`.
 3. Preserve result-kind and element-type semantics, especially conversions.
 4. Mark all represented operations as consumed.
 5. Emit the expression in every applicable backend.
@@ -1654,7 +1654,7 @@ indexing, mutation, or ABI has not been proven safe.
 
 ### Add a device backend
 
-1. Implement `FNACCCodegenBackend` against `FNACCKernelPlan`.
+1. Implement `TileOffloadCodegenBackend` against `TileOffloadKernelPlan`.
 2. Give unsupported plans precise `querySupport` diagnostics.
 3. Register preferred, automatic, and fallback selection.
 4. Emit schema-v1/backend-contract-v1 metadata.
@@ -1687,7 +1687,7 @@ Do not allow a runtime to accept metadata or images for a different target.
 
 Update these together:
 
-- runtime-call creation in `FNACCLowerToRuntime.cpp`;
+- runtime-call creation in `TileOffloadLowerToRuntime.cpp`;
 - exported runtime function signatures;
 - JSON parameter roles and types when the device contract also changes;
 - driver image/ABI validation;
@@ -1699,7 +1699,7 @@ context; never infer ownership from a process-global device-pointer cache.
 
 ## Diagnostics and troubleshooting
 
-### `FNACC cannot plan launch`
+### `TileOffload cannot plan launch`
 
 The launch is outside the recognised subset. Read the final recogniser reason
 first. Common causes include:
@@ -1713,16 +1713,16 @@ first. Common causes include:
 - a descriptor or rank the ABI cannot represent; or
 - an operation with observable effects that was not consumed by the plan.
 
-### `FNACC backend selection failed`
+### `TileOffload backend selection failed`
 
 The preferred backend is unregistered or its `querySupport` rejected the plan.
-Use `--fnacc-backend triton`, permit a Triton fallback, or inspect the detailed
-rejection. `--fnacc-no-backend-fallback` is useful in tests that must prove a
+Use `--TileOffload-backend triton`, permit a Triton fallback, or inspect the detailed
+rejection. `--TileOffload-no-backend-fallback` is useful in tests that must prove a
 specific backend handled every kernel.
 
-### Driver fails at `fnacc-pipeline`
+### Driver fails at `TileOffload-pipeline`
 
-Re-run with `--fnacc-verbose --fnacc-keep`, execute the printed `fir-opt`
+Re-run with `--TileOffload-verbose --TileOffload-keep`, execute the printed `fir-opt`
 command directly, and inspect the retained `.fir`, `.kernels.ttir`,
 `.kernels.json`, and `.host.fir` files.
 
@@ -1736,24 +1736,24 @@ materialized/inlined, and only then invokes NVPTX `llc`.
 If `ptxas` still reports an unresolved symbol such as `__nv_sqrt`, ensure
 `LLVM_LINK`, `OPT`, and `LLC` come from compatible LLVM builds and that the
 selected libdevice is compatible with them. Override discovery with
-`--fnacc-cuda-libdevice FILE` or `FNACC_CUDA_LIBDEVICE`, retain intermediates,
+`--TileOffload-cuda-libdevice FILE` or `tileoff_CUDA_LIBDEVICE`, retain intermediates,
 and run `ptxas` on the generated PTX directly.
 
 ### HIP/ROCm toolchain errors
 
-For `--fnacc-target hip`, confirm that:
+For `--TileOffload-target hip`, confirm that:
 
-- `--fnacc-gpu-arch` names the installed GPU, for example `gfx90a` or `gfx942`;
+- `--TileOffload-gpu-arch` names the installed GPU, for example `gfx90a` or `gfx942`;
 - `ROCM_PATH` points to the intended ROCm installation;
 - `LLC`, `MLIR_TRANSLATE`, and `LD_LLD` are compatible with the Triton build;
 - the device-library directory contains `ocml.bc`, `ockl.bc`, the required
   `oclc_*` control modules, and an ISA module for the selected `gfx...`; and
-- the final link also uses `--fnacc-target hip` and can find `libamdhip64`.
+- the final link also uses `--TileOffload-target hip` and can find `libamdhip64`.
 
-Override device-library discovery with `--fnacc-rocm-device-lib-dir` and HIP
-runtime discovery with `--fnacc-hip-lib-dir`. If Triton's AMD pass spellings
-differ from the defaults, set `FNACC_HIP_TTIR_TO_TTGIR_PASSES` and/or
-`FNACC_HIP_TTGIR_TO_LLVM_PASSES`.
+Override device-library discovery with `--TileOffload-rocm-device-lib-dir` and HIP
+runtime discovery with `--TileOffload-hip-lib-dir`. If Triton's AMD pass spellings
+differ from the defaults, set `tileoff_HIP_TTIR_TO_TTGIR_PASSES` and/or
+`tileoff_HIP_TTGIR_TO_LLVM_PASSES`.
 
 An error that the AMDGPU object or HSACO was not generated usually indicates a
 target-architecture or LLVM/ROCm version mismatch. Retain intermediates and run
@@ -1763,23 +1763,23 @@ the printed `llc` and `ld.lld` commands directly.
 
 CUDA objects carry `accelerator_target=cuda` with PTX/cubin images; HIP objects
 carry `accelerator_target=hip` with HSACO images. A target/image mismatch means
-the object was linked against the wrong FnACC runtime or bundles for different
+the object was linked against the wrong TileOffload runtime or bundles for different
 targets were mixed. Recompile consistently and repeat the same
-`--fnacc-target` on the final link.
+`--TileOffload-target` on the final link.
 
 ### `no kernels were emitted`
 
-Data-only FnACC sources are accepted automatically. If the message says that
-an FnACC `parallel` launch was present, recognition or pipeline output is
+Data-only TileOffload sources are accepted automatically. If the message says that
+an TileOffload `parallel` launch was present, recognition or pipeline output is
 inconsistent. Inspect retained FIR/JSON rather than setting
-`FNACC_ALLOW_EMPTY_KERNELS=1` in normal builds; the variable suppresses a
+`tileoff_ALLOW_EMPTY_KERNELS=1` in normal builds; the variable suppresses a
 safety check and does not make a missing kernel execute.
 
 ### Undefined `_QP...` references when linking plain objects
 
-Rebuild the FnACC compiler and recompile the affected FnACC object with the
-current external-alias pass enabled. FnACC declarations should call ordinary
-top-level Flang procedures through `name_`, while FnACC definitions provide a
+Rebuild the TileOffload compiler and recompile the affected TileOffload object with the
+current external-alias pass enabled. TileOffload declarations should call ordinary
+top-level Flang procedures through `name_`, while TileOffload definitions provide a
 compatible external entry point. Use `nm` to confirm that callers and
 definitions agree.
 
@@ -1799,10 +1799,10 @@ Do not use `exit data copyout(...)` solely to fetch results if a later procedure
 will perform `exit data delete(...)`; the first exit already ends the frame.
 Use `update host(...)` for the intermediate fetch and one final region exit.
 
-An earlier frontend bug omitted standalone FnACC directives from the PFT lexical
+An earlier frontend bug omitted standalone TileOffload directives from the PFT lexical
 successor chain. In particular, `enter data create(...)` after an allocation
 error check containing `STOP` could be skipped. The fix classifies
-`FnACCStandaloneConstruct` as an executable directive in `PFTBuilder.h`.
+`TileOffloadStandaloneConstruct` as an executable directive in `PFTBuilder.h`.
 Rebuild the frontend and affected Fortran objects; moving the directive to a
 different procedure is a workaround, not the intended requirement. Verify the
 runtime enter/create calls in lowered FIR when diagnosing an old build.
@@ -1825,7 +1825,7 @@ unsupported ranks cannot be mapped safely by the current runtime ABI.
 
 ### FIR verification after control-flow termination
 
-Some PFT/control-flow shapes can still expose a standalone FnACC directive
+Some PFT/control-flow shapes can still expose a standalone TileOffload directive
 after a block already terminated by an infinite `do`/conditional `exit`
 sequence, producing an error such as:
 
@@ -1850,13 +1850,13 @@ Check the lifetime in this order:
 6. Did an inner data region defer copyout because an outer owner remained?
 7. Was the allocation released only after its final consumer?
 
-Enable `FNACC_DEBUG=1` and inspect context, bundle, cache, region depth,
+Enable `tileoff_DEBUG=1` and inspect context, bundle, cache, region depth,
 ownership count, pack targets, byte counts, extents, lower bounds, strides,
 grid, tile, subgroup/block size, accelerator target, and image metadata.
 
 ## Known limitations
 
-- FnACC is experimental and deliberately recogniser-based rather than a
+- TileOffload is experimental and deliberately recogniser-based rather than a
   general-purpose Fortran device compiler.
 - Loop steps must be `1`; matmul loop lower bounds must also be `1`.
 - Kernel computation supports logical ranks one and two. Data-descriptor

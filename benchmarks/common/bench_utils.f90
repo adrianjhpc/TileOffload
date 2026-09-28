@@ -5,7 +5,7 @@ module bench_utils
   private
   public :: parse_i64_arg, parse_i32_arg, print_result, almost_equal_f32, almost_equal_f64, wall_time
 
-  integer(c_int), parameter :: fnacc_clock_monotonic = 1_c_int
+  integer(c_int), parameter :: tileoff_clock_monotonic = 1_c_int
 
   type, bind(C) :: c_timespec
      integer(c_long) :: tv_sec
@@ -112,7 +112,7 @@ contains
     type(c_timespec) :: ts
     integer(c_int) :: ierr
     
-    ierr = c_clock_gettime(fnacc_clock_monotonic, ts)
+    ierr = c_clock_gettime(tileoff_clock_monotonic, ts)
 
     if (ierr /= 0_c_int) then
       wall_time = 0.0_c_double
