@@ -41,7 +41,7 @@ The compiler driver lives in a separate repository.
 - [Backend artifact contract](#backend-artifact-contract)
 - [Performance tuning and profiling](#performance-tuning-and-profiling)
 - [Testing](#testing)
-- [Extending TileOffload](#extending-TileOffload)
+- [Extending TileOffload](#extending-tileoffload)
 - [Diagnostics and troubleshooting](#diagnostics-and-troubleshooting)
 - [Known limitations](#known-limitations)
 
@@ -93,7 +93,7 @@ The implemented end-to-end paths are:
 ```text
 Fortran + !$tileoff
   -> Flang parse tree and semantics
-  -> FIR with TileOffload.launch and TileOffload data operations
+  -> FIR with tileoffload.launch and TileOffload data operations
   -> kernel recognition and backend-neutral planning
   -> Triton TTIR -> target-specific TTGIR -> LLVM MLIR -> LLVM IR
        CUDA: NVPTX + CUDA libdevice -> PTX
@@ -110,8 +110,8 @@ host.
 ## GPU targets
 
 The code-generation backend and accelerator target are separate choices.
-`--TileOffload-backend triton` selects the kernel code generator;
-`--TileOffload-target cuda|hip` selects the device toolchain, image format, and host
+`--tileoff-backend triton` selects the kernel code generator;
+`--tileoff-target cuda|hip` selects the device toolchain, image format, and host
 runtime.
 
 | Target | Architecture example | Subgroup width | Embedded image | Runtime library |
@@ -122,17 +122,17 @@ runtime.
 CUDA remains the default target for compatibility. Select AMD explicitly:
 
 ```sh
-TileOffload-flang --TileOffload-target hip --TileOffload-gpu-arch gfx942 ...
+tileoffload-flang --tileoff-target hip --tileoff-gpu-arch gfx942 ...
 ```
 
-`--TileOffload-target` also accepts `nvidia`, `amd`, and `rocm` as normalized
-spellings. `--TileOffload-sm` remains the CUDA compatibility option, while
-`--TileOffload-amd-arch` is an AMD compatibility spelling for
-`--TileOffload-target hip --TileOffload-gpu-arch ARCH`.
+`--tileoff-target` also accepts `nvidia`, `amd`, and `rocm` as normalized
+spellings. `--tileoff-sm` remains the CUDA compatibility option, while
+`--tileoff-amd-arch` is an AMD compatibility spelling for
+`--tileoff-target hip --tileoff-gpu-arch ARCH`.
 
-All TileOffload-bearing objects linked into one executable must target the same
+All tileoffload-bearing objects linked into one executable must target the same
 accelerator platform. The final link invocation must use the same
-`--TileOffload-target` so that the driver selects the matching runtime library.
+`--tileoff-target` so that the driver selects the matching runtime library.
 
 ## Building the toolchain
 
@@ -182,7 +182,7 @@ cmake -S llvm -B build -G Ninja \
 `HIP_DRIVER_LIBRARY` when they are outside normal locations. A CUDA or `BOTH`
 build must find the CUDA driver headers and library.
 
-`FLANG_TileOffload=ON` remains a compatibility spelling when
+`FLANG_TILEOFFLOAD=ON` remains a compatibility spelling when
 `FLANG_TILEOFF_RUNTIME` is not set explicitly.
 
 Typical rebuild targets are:
@@ -260,8 +260,8 @@ end program
 Compile, link, and run it on NVIDIA CUDA (the default target):
 
 ```sh
-/path/to/TileOffload/bin/TileOffload-flang \
-  --TileOffload-target cuda --TileOffload-gpu-arch sm_90a \
+/path/to/TileOffload/bin/tileoffload-flang \
+  --tileoff-target cuda --tileoff-gpu-arch sm_90a \
   example.f90 -O3 -o example
 TILEOFF_DEVICE=0 ./example
 ```
@@ -269,8 +269,8 @@ TILEOFF_DEVICE=0 ./example
 Compile the same source for AMD HIP/ROCm:
 
 ```sh
-/path/to/TileOffload/bin/TileOffload-flang \
-  --TileOffload-target hip --TileOffload-gpu-arch gfx942 \
+/path/to/TileOffload/bin/tileoffload-flang \
+  --tileoff-target hip --tileoff-gpu-arch gfx942 \
   example.f90 -O3 -o example
 TILEOFF_DEVICE=0 ./example
 ```
@@ -278,14 +278,14 @@ TILEOFF_DEVICE=0 ./example
 For separate compilation:
 
 ```sh
-TileOffload-flang -O3 -c kernels.f90 -o kernels.o
-TileOffload-flang -O3 -c main.f90 -o main.o
-TileOffload-flang main.o kernels.o -o example
+tileoffload-flang -O3 -c kernels.f90 -o kernels.o
+tileoffload-flang -O3 -c main.f90 -o main.o
+tileoffload-flang main.o kernels.o -o example
 ```
 
 TileOffload objects are conventional relocatable objects. Each can contain its own
 embedded device bundle, and multiple bundles may be linked into the same
-executable. For HIP, repeat `--TileOffload-target hip` on every TileOffload compilation and
+executable. For HIP, repeat `--tileoff-target hip` on every TileOffload compilation and
 on the final link so the driver selects `FortranTileOffloadRuntimeHIP`.
 
 ## Programming model
@@ -717,9 +717,9 @@ acceptance criteria; do not change validation tolerances merely to hide errors.
 Select the f64 code-generation strategy with:
 
 ```sh
-TileOffload-flang --TileOffload-f64-matmul-strategy reduce ...
-TileOffload-flang --TileOffload-f64-matmul-strategy fma ...
-TileOffload-flang --TileOffload-f64-matmul-strategy dot ...
+tileoffload-flang --tileoff-f64-matmul-strategy reduce ...
+tileoffload-flang --tileoff-f64-matmul-strategy fma ...
+tileoffload-flang --tileoff-f64-matmul-strategy dot ...
 ```
 
 Performance and toolchain compatibility are GPU- and Triton-version
@@ -915,11 +915,11 @@ would otherwise leave stale identity and size information.
 
 ### Driver pipeline
 
-For an TileOffload source, `TileOffload-flang` performs:
+For an TileOffload source, `tileoffload-flang` performs:
 
 1. a syntax-only Flang invocation to generate module files;
 2. FIR emission;
-3. the `TileOffload-pipeline`, producing host FIR, device IR, and JSON;
+3. the `tileoffload-pipeline`, producing host FIR, device IR, and JSON;
 4. per-kernel device-IR splitting;
 5. TTIR-to-TritonGPU lowering;
 6. TritonGPU-to-LLVM-MLIR lowering;
@@ -950,7 +950,7 @@ unexpectedly emits no kernel; the default is to diagnose that inconsistency.
 
 Sources without a recognised TileOffload sentinel are delegated to the configured
 Flang driver. `-E`, `-S`, and `-fsyntax-only` are also delegated and do not run
-accelerator code generation. Use `--TileOffload-force` or `--TileOffload-disable` to
+accelerator code generation. Use `--tileoff-force` or `--tileoff-disable` to
 override source auto-detection.
 
 ### Separate compilation and multiple bundles
@@ -963,7 +963,7 @@ IDs remain disjoint across separately compiled inputs, while direct
 The runtime validates bundle registration and diagnoses kernel identity/name
 collisions rather than silently choosing one definition.
 
-TileOffload-host objects also use normal Flang external procedure ABI names when
+tileoffload-host objects also use normal Flang external procedure ABI names when
 calling procedures defined in ordinary Flang objects. Top-level TileOffload
 definitions expose the corresponding trailing-underscore compatibility entry
 point, allowing mixed TileOffload/plain object links.
@@ -971,7 +971,7 @@ point, allowing mixed TileOffload/plain object links.
 ### Runtime linking
 
 When it detects TileOffload code, the driver adds the runtime matching
-`--TileOffload-target`:
+`--tileoff-target`:
 
 ```text
 cuda: -L$LLVM_BUILD/lib -lFortranTileOffloadRuntime    -lcuda     -lstdc++
@@ -979,7 +979,7 @@ hip:  -L$LLVM_BUILD/lib -lFortranTileOffloadRuntimeHIP -lamdhip64 -lstdc++
 ```
 
 with appropriate runtime search paths. Object and archive inputs are scanned
-for TileOffload symbols. Use `--TileOffload-runtime` when TileOffload code is visible only
+for TileOffload symbols. Use `--tileoff-runtime` when TileOffload code is visible only
 through `-lNAME` and cannot be detected from a named input file. The link
 target must match the target used to compile every embedded bundle.
 
@@ -995,44 +995,44 @@ Flags are routed to the relevant frontend, host-codegen, or final-link stage.
 
 | Option | Meaning |
 | --- | --- |
-| `--TileOffload-force` | Run TileOffload lowering for every Fortran source. |
-| `--TileOffload-disable` | Delegate every source to Flang. |
-| `--TileOffload-runtime` | Force TileOffload runtime libraries into the final link. |
-| `--TileOffload-no-runtime` | Do not add the runtime automatically. |
-| `--TileOffload-launch-abi N` | Host launch ABI: `3` by default, or explicit `2` compatibility. |
-| `--TileOffload-target NAME` | Accelerator platform: `cuda` (default) or `hip`. The spellings `nvidia`, `amd`, and `rocm` are normalized. |
-| `--TileOffload-gpu-arch ARCH` | Target architecture such as `sm_90a`, `gfx90a`, or `gfx942`. |
-| `--TileOffload-sm N` | CUDA compatibility option accepting `80`, `sm_80`, `cc80`, or `sm_90a`. |
-| `--TileOffload-amd-arch ARCH` | Compatibility spelling that selects HIP and an AMD `gfx...` architecture. |
-| `--TileOffload-backend NAME` | Preferred backend; default `auto`. |
-| `--TileOffload-fallback-backend NAME` | Backend used when the preferred backend rejects a kernel; default `triton`. |
-| `--TileOffload-backend-fallback` | Enable fallback; currently the default. |
-| `--TileOffload-no-backend-fallback` | Fail instead of using the fallback backend. |
-| `--TileOffload-num-warps N` | Requested warps per CTA; a power of two and at most 32. |
-| `--TileOffload-threads-per-warp N` | Subgroup width. CUDA requires `32`; HIP accepts `32` or `64`. |
-| `--TileOffload-num-stages N` | Triton pipeline stages, currently 1 through 16. |
-| `--TileOffload-f64-matmul-strategy NAME` | `reduce`, `fma`, or `dot`. |
-| `--TileOffload-cuda-lib-dir DIR` | CUDA Driver API library directory. |
-| `--TileOffload-cuda-libdevice FILE` | CUDA `libdevice.10.bc`; normally auto-detected. |
-| `--TileOffload-rocm-path DIR` | ROCm installation prefix; default `ROCM_PATH` or `/opt/rocm`. |
-| `--TileOffload-rocm-device-lib-dir DIR` | Directory containing ROCm device bitcode such as `ocml.bc` and `ockl.bc`. |
-| `--TileOffload-hip-lib-dir DIR` | Directory containing `libamdhip64`. |
-| `--TileOffload-workdir DIR` | Parent directory for a unique intermediate tree. |
-| `--TileOffload-keep` | Keep intermediate files. |
-| `--TileOffload-verbose` | Print commands before executing them. |
-| `--TileOffload-dry-run` | Print commands without executing them. |
-| `--TileOffload-stop-after STAGE` | Stop one TileOffload source after an internal stage. |
+| `--tileoff-force` | Run TileOffload lowering for every Fortran source. |
+| `--tileoff-disable` | Delegate every source to Flang. |
+| `--tileoff-runtime` | Force TileOffload runtime libraries into the final link. |
+| `--tileoff-no-runtime` | Do not add the runtime automatically. |
+| `--tileoff-launch-abi N` | Host launch ABI: `3` by default, or explicit `2` compatibility. |
+| `--tileoff-target NAME` | Accelerator platform: `cuda` (default) or `hip`. The spellings `nvidia`, `amd`, and `rocm` are normalized. |
+| `--tileoff-gpu-arch ARCH` | Target architecture such as `sm_90a`, `gfx90a`, or `gfx942`. |
+| `--tileoff-sm N` | CUDA compatibility option accepting `80`, `sm_80`, `cc80`, or `sm_90a`. |
+| `--tileoff-amd-arch ARCH` | Compatibility spelling that selects HIP and an AMD `gfx...` architecture. |
+| `--tileoff-backend NAME` | Preferred backend; default `auto`. |
+| `--tileoff-fallback-backend NAME` | Backend used when the preferred backend rejects a kernel; default `triton`. |
+| `--tileoff-backend-fallback` | Enable fallback; currently the default. |
+| `--tileoff-no-backend-fallback` | Fail instead of using the fallback backend. |
+| `--tileoff-num-warps N` | Requested warps per CTA; a power of two and at most 32. |
+| `--tileoff-threads-per-warp N` | Subgroup width. CUDA requires `32`; HIP accepts `32` or `64`. |
+| `--tileoff-num-stages N` | Triton pipeline stages, currently 1 through 16. |
+| `--tileoff-f64-matmul-strategy NAME` | `reduce`, `fma`, or `dot`. |
+| `--tileoff-cuda-lib-dir DIR` | CUDA Driver API library directory. |
+| `--tileoff-cuda-libdevice FILE` | CUDA `libdevice.10.bc`; normally auto-detected. |
+| `--tileoff-rocm-path DIR` | ROCm installation prefix; default `ROCM_PATH` or `/opt/rocm`. |
+| `--tileoff-rocm-device-lib-dir DIR` | Directory containing ROCm device bitcode such as `ocml.bc` and `ockl.bc`. |
+| `--tileoff-hip-lib-dir DIR` | Directory containing `libamdhip64`. |
+| `--tileoff-workdir DIR` | Parent directory for a unique intermediate tree. |
+| `--tileoff-keep` | Keep intermediate files. |
+| `--tileoff-verbose` | Print commands before executing them. |
+| `--tileoff-dry-run` | Print commands without executing them. |
+| `--tileoff-stop-after STAGE` | Stop one TileOffload source after an internal stage. |
 
-Compatibility aliases without the `TileOffload-` prefix are accepted for schedule,
+Compatibility aliases without the `tileoffload-` prefix are accepted for schedule,
 work-directory, verbosity, and stop controls.
 
-Useful stop stages include `modgen`, `fir`, `TileOffload-pipeline`, `ttgir`,
+Useful stop stages include `modgen`, `fir`, `tileoffload-pipeline`, `ttgir`,
 `llvm-mlir`, `llvm-ir`, `ptx`, `hsaco`, `device-image`, `embed`, `host-ll`,
 `host-obj`, `object`, `objects`, and `link`.
 
 ```sh
-TileOffload-flang --TileOffload-verbose --TileOffload-keep \
-  --TileOffload-stop-after TileOffload-pipeline -c kernels.f90
+tileoffload-flang --tileoff-verbose --tileoff-keep \
+  --tileoff-stop-after tileoffload-pipeline -c kernels.f90
 ```
 
 ### Driver environment variables
@@ -1053,7 +1053,7 @@ TileOffload-flang --TileOffload-verbose --TileOffload-keep \
 | `ROCM_PATH` | ROCm installation prefix; default `/opt/rocm`. |
 | `TILEOFF_ROCM_DEVICE_LIB_DIR` | ROCm bitcode directory containing OCML/OCKL and control bitcode. |
 | `TILEOFF_HIP_LIB_DIR` | Directory containing `libamdhip64`; defaults to `$ROCM_PATH/lib` or `lib64`. |
-| `TILEOFF_LAUNCH_ABI` | Default host launch ABI; `3`. An explicit `--TileOffload-launch-abi` overrides it. |
+| `TILEOFF_LAUNCH_ABI` | Default host launch ABI; `3`. An explicit `--tileoff-launch-abi` overrides it. |
 | `TILEOFF_TARGET` | Default accelerator target: `cuda` or `hip`. |
 | `TILEOFF_GPU_ARCH` | Default target architecture such as `sm_90a` or `gfx942`. |
 | `TILEOFF_SM` | CUDA architecture compatibility variable. |
@@ -1165,7 +1165,7 @@ across calls.
 
 | Area | Principal files |
 | --- | --- |
-| Parse tree and syntax | `flang/include/flang/Parser/parse-tree-TileOffload.h`, `flang/lib/Parser/TileOffload-parsers.cpp` |
+| Parse tree and syntax | `flang/include/flang/Parser/parse-tree-tileoffload.h`, `flang/lib/Parser/tileoffload-parsers.cpp` |
 | Unparsing and semantics | `flang/lib/Parser/unparse.cpp`, `flang/lib/Semantics/resolve-names.cpp` |
 | PFT and FIR generation | `flang/include/flang/Lower/PFTBuilder.h`, `flang/lib/Lower/PFTBuilder.cpp`, `flang/lib/Lower/Bridge.cpp` |
 | TileOffload dialect | `flang/include/flang/Optimizer/Dialect/TileOffload/TileOffloadOps.td`, `TileOffloadDialect.td`, `flang/lib/Optimizer/Dialect/TileOffload/TileOffloadDialect.cpp` |
@@ -1175,32 +1175,32 @@ across calls.
 | External ABI aliases | `flang/lib/Optimizer/Dialect/TileOffload/TileOffloadEmitFortranAliases.cpp` |
 | Pass pipeline | `TileOffloadPasses.td`, `TileOffloadPipelines.cpp` |
 | CUDA/HIP runtimes | `flang/lib/Runtime/TileOffload/tileoff_runtime.cpp`, built as `FortranTileOffloadRuntime` or `FortranTileOffloadRuntimeHIP` |
-| Compiler wrapper | `TileOffload/bin/TileOffload-flang` |
+| Compiler wrapper | `TileOffload/bin/tileoffload-flang` |
 
 The FIR dialect includes:
 
-- `TileOffload.launch` with tile sizes, pack targets, reduction metadata, and
+- `tileoffload.launch` with tile sizes, pack targets, reduction metadata, and
   `no_copyback` behavior;
-- `TileOffload.terminator` for its single-block region;
-- `TileOffload.data_region_enter` and `TileOffload.data_region_exit`;
-- `TileOffload.copyin`, `TileOffload.create`, `TileOffload.copyout`, and `TileOffload.delete`;
-- `TileOffload.present`, `TileOffload.update_host`, and `TileOffload.update_device`;
-- `TileOffload.release`, `TileOffload.release_all`, and `TileOffload.wait`.
+- `tileoffload.terminator` for its single-block region;
+- `tileoffload.data_region_enter` and `tileoffload.data_region_exit`;
+- `tileoffload.copyin`, `tileoffload.create`, `tileoffload.copyout`, and `tileoffload.delete`;
+- `tileoffload.present`, `tileoffload.update_host`, and `tileoffload.update_device`;
+- `tileoffload.release`, `tileoffload.release_all`, and `tileoffload.wait`.
 
-Hand-written MLIR tests must terminate `TileOffload.launch` with
-`TileOffload.terminator`; `fir.end` is not the TileOffload region terminator.
+Hand-written MLIR tests must terminate `tileoffload.launch` with
+`tileoffload.terminator`; `fir.end` is not the tileoffload region terminator.
 
 ### Pass pipeline
 
-The registered `TileOffload-pipeline` performs:
+The registered `tileoffload-pipeline` performs:
 
-1. `TileOffload-assign-kernel-ids` for stable per-bundle IDs and symbols;
+1. `tileoffload-assign-kernel-ids` for stable per-bundle IDs and symbols;
 2. recognition, planning, backend selection, device IR, and JSON emission;
-3. `TileOffload-lower-to-runtime` for host launch and data calls; and
-4. optional `TileOffload-emit-fortran-aliases` for external Fortran ABI
+3. `tileoffload-lower-to-runtime` for host launch and data calls; and
+4. optional `tileoffload-emit-fortran-aliases` for external Fortran ABI
    compatibility.
 
-`TileOffload-outline-kernels` also exists for development experiments but is not a
+`tileoffload-outline-kernels` also exists for development experiments but is not a
 normal stage of the driver route.
 
 ### Recognition and consumed operations
@@ -1233,18 +1233,18 @@ context guard; it does not change the numerical device kernel.
 
 ```sh
 # Default v3; an environment override can change this.
-TileOffload-flang -O3 -c kernel.f90
+tileoffload-flang -O3 -c kernel.f90
 
 # Explicit selection overrides TILEOFF_LAUNCH_ABI.
-TileOffload-flang --TileOffload-launch-abi 3 -O3 -c kernel.f90
-TileOffload-flang --TileOffload-launch-abi 2 -O3 -c kernel.f90
+tileoffload-flang --tileoff-launch-abi 3 -O3 -c kernel.f90
+tileoffload-flang --tileoff-launch-abi 2 -O3 -c kernel.f90
 ```
 
-Both `TileOffload-pipeline` and standalone `TileOffload-lower-to-runtime` default to v3:
+Both `tileoffload-pipeline` and standalone `tileoffload-lower-to-runtime` default to v3:
 
 ```sh
-fir-opt --TileOffload-pipeline="launch-abi=2 ttir-output=k.ttir json-output=k.json" input.fir
-fir-opt --TileOffload-lower-to-runtime="launch-abi=2" input.fir
+fir-opt --tileoff-pipeline="launch-abi=2 ttir-output=k.ttir json-output=k.json" input.fir
+fir-opt --tileoff-lower-to-runtime="launch-abi=2" input.fir
 ```
 
 V3 lowering requires an explicit supported 64-bit `x86_64` or `aarch64` host
@@ -1346,56 +1346,20 @@ is contiguous, so wider tiles in that dimension are useful candidates. The
 emitted TTGIR layout, array strides, masks, and final device code determine the
 actual memory behavior. More warps are not automatically better.
 
-For the measured H100 CloverLeaf long case, the confirmed configuration for
-`ideal_gas_kernel.f90`, `reset_field_kernel.f90` (both loops), and
-`revert_kernel.f90` is:
-
-```fortran
-!$tileoff parallel tile(256,1) no_copyback
-```
-
-with `--TileOffload-num-warps 8 --TileOffload-threads-per-warp 32`. Keep the original ideal-gas
-arithmetic. This is an application-specific tuning result, not a replacement for
-all stencil or reduction tiles. Earlier interior `64,4` and halo-strip changes
-remain separate choices for other kernels. Halo strips should place the long
-dimension along the boundary traversal and the short dimension along halo depth;
-preserve each loop's bounds and corner dependencies when changing them.
-
-The paired long-run profiles showed the following accumulated device durations:
-
-| Kernel family | Previous TileOffload | Tuned TileOffload (`256,1`, 8 warps) | Matching earlier CUDA capture | Matching earlier OpenACC capture |
-| --- | ---: | ---: | ---: | ---: |
-| Ideal gas | 9.279 s | 7.845 s | 7.966 s | 8.827 s |
-| Reset, both loops | 8.529 s | 7.427 s | 7.412 s | 7.487 s |
-| Revert | 4.437 s | 3.749 s | 3.664 s | 3.792 s |
-| All GPU kernels | 193.675 s | 190.446 s | 200.252 s | 198.255 s |
-
-These are sums of kernel durations from particular captures, not application
-wall times or a portable speedup claim. The tuned routines account for about
-3.224 seconds of the 3.229-second change; other kernels were essentially
-unchanged. Full input files, build revisions, clocks, and run conditions are
-needed to reproduce a comparison. Validate each configuration and compare repeated
-unprofiled runs before accepting small differences.
-
-V3 reduced some host overhead in the microbenchmarks but did not measurably
-change CloverLeaf wall time or reported correctness. Do not attribute device
-kernel improvements from tile tuning to the host ABI change. Large kernels can
-hide host submission savings; small resident kernels are more sensitive to them.
-
 ### Inspect generated kernels
 
 Keep intermediates for the exact source/configuration being measured:
 
 ```sh
-mkdir -p TileOffload-inspect
-TileOffload-flang --TileOffload-target cuda --TileOffload-gpu-arch sm_90a \
-  --TileOffload-num-warps 8 --TileOffload-threads-per-warp 32 \
-  --TileOffload-keep --TileOffload-workdir "$PWD/TileOffload-inspect" \
+mkdir -p tileoffload-inspect
+tileoffload-flang --tileoff-target cuda --tileoff-gpu-arch sm_90a \
+  --tileoff-num-warps 8 --tileoff-threads-per-warp 32 \
+  --tileoff-keep --tileoff-workdir "$PWD/tileoffload-inspect" \
   -O3 -c reset_field_kernel.f90 -o reset_field_kernel.o
 
-rg --files TileOffload-inspect | rg '\.ptx$'
-rg -n --glob '*.ptx' '\.entry' TileOffload-inspect
-rg -n --glob '*.json' '"tile"|"num_warps"|"threads_per_cta"' TileOffload-inspect
+rg --files tileoffload-inspect | rg '\.ptx$'
+rg -n --glob '*.ptx' '\.entry' tileoffload-inspect
+rg -n --glob '*.json' '"tile"|"num_warps"|"threads_per_cta"' tileoffload-inspect
 ```
 
 Retain normal application include/module flags and relink before measuring.
@@ -1417,11 +1381,11 @@ working directory, with a unique report name:
 ```sh
 TILEOFF_ASYNC_RESIDENT=1 nsys profile \
   --trace=cuda,nvtx --sample=none \
-  -o cloverleaf-TileOffload ./clover_leaf
+  -o cloverleaf-tileoffload ./clover_leaf
 
 nsys stats \
   --report cuda_gpu_kern_sum,cuda_api_sum,cuda_gpu_mem_time_sum,cuda_gpu_mem_size_sum \
-  cloverleaf-TileOffload.nsys-rep > cloverleaf-TileOffload-summary.txt
+  cloverleaf-tileoffload.nsys-rep > cloverleaf-tileoffload-summary.txt
 ```
 
 NVTX ranges appear only if instrumentation is enabled; CUDA tracing does not
@@ -1478,7 +1442,7 @@ Run a focused test or directory with:
 
 ```sh
 "$LLVM_BUILD/bin/llvm-lit" -sv \
-  /path/to/llvm-project/flang/test/Lower/TileOffload/TileOffload-pipeline.f90
+  /path/to/llvm-project/flang/test/Lower/TileOffload/tileoffload-pipeline.f90
 
 "$LLVM_BUILD/bin/llvm-lit" -sv \
   /path/to/llvm-project/flang/test/Lower/TileOffload
@@ -1515,7 +1479,7 @@ The dedicated v3 test should cover:
 - identical device TTIR/JSON across host ABI selections where expected; and
 - unsupported host triples and invalid ABI selections.
 
-Keep checks for `TileOffload.launch` IR, data transfers, release, and synchronization
+Keep checks for `tileoffload.launch` IR, data transfers, release, and synchronization
 operations unchanged unless their actual semantics change. V2 matmul argument
 checks cannot be migrated by merely renaming the callee: v3 passes a request
 pointer, and the corresponding request stores must be checked instead.
@@ -1537,7 +1501,7 @@ test has been migrated; run the suite and inspect remaining failures.
 
 ```sh
 cmake -S tests/reduction -B build/reduction \
-  -DTILEOFF_REDUCTION_TEST_DRIVER="$PWD/bin/TileOffload-flang" \
+  -DTILEOFF_REDUCTION_TEST_DRIVER="$PWD/bin/tileoffload-flang" \
   -DLLVM_BUILD="$LLVM_BUILD" \
   -DTRITON_OPT="$TRITON_OPT" \
   -DMLIR_TRANSLATE="$MLIR_TRANSLATE" \
@@ -1556,12 +1520,12 @@ on each available target before testing a full application:
 
 ```sh
 # NVIDIA
-TileOffload-flang --TileOffload-target cuda --TileOffload-gpu-arch sm_90a \
+tileoffload-flang --tileoff-target cuda --tileoff-gpu-arch sm_90a \
   vector_add.f90 -O3 -o vector_add.cuda
 TILEOFF_DEBUG=1 TILEOFF_DEVICE=0 ./vector_add.cuda
 
 # AMD
-TileOffload-flang --TileOffload-target hip --TileOffload-gpu-arch gfx942 \
+tileoffload-flang --tileoff-target hip --tileoff-gpu-arch gfx942 \
   vector_add.f90 -O3 -o vector_add.hip
 TILEOFF_DEBUG=1 TILEOFF_DEVICE=0 ./vector_add.hip
 ```
@@ -1570,28 +1534,12 @@ Use an architecture that exactly matches the installed GPU. The HIP path is
 particularly sensitive to compatible Triton, LLVM, ROCm device-library, and
 `ld.lld` revisions.
 
-### Repeated BabelStream measurements
-
-`tools/TileOffload-babelstream-stats.py` runs warm-ups and repeated measured trials,
-reports bandwidth statistics and robust outliers, and can preserve JSON:
-
-```sh
-tools/TileOffload-babelstream-stats.py \
-  --warmups 1 --runs 9 \
-  --arraysize 33554432 --numtimes 100 \
-  --json TileOffload-babelstream.json \
-  ./BabelStream.TileOffload.TileOffloadArray
-```
-
-Use the same device visibility, device ordinal, clocks, array size, iteration
-count, and warm-up policy for every implementation being compared. A
-validation error is a failed benchmark regardless of reported bandwidth.
 
 ### Runtime debugging
 
 ```sh
-TileOffload-flang --TileOffload-keep --TileOffload-verbose \
-  --TileOffload-target TARGET --TileOffload-gpu-arch ARCH -c kernel.f90
+tileoffload-flang --tileoff-keep --tileoff-verbose \
+  --tileoff-target TARGET --tileoff-gpu-arch ARCH -c kernel.f90
 TILEOFF_DEBUG=1 TILEOFF_DEVICE=0 ./program
 ```
 
@@ -1609,8 +1557,8 @@ updates outside the timed region.
 
 ### Add or change directive syntax
 
-1. Add parse-tree nodes in `parse-tree-TileOffload.h`.
-2. Add parsers in `TileOffload-parsers.cpp` and executable-construct routing when
+1. Add parse-tree nodes in `parse-tree-tileoffload.h`.
+2. Add parsers in `tileoffload-parsers.cpp` and executable-construct routing when
    needed.
 3. Resolve contained variables and names in `resolve-names.cpp`.
 4. Add unparse support in `unparse.cpp`.
@@ -1716,13 +1664,13 @@ first. Common causes include:
 ### `TileOffload backend selection failed`
 
 The preferred backend is unregistered or its `querySupport` rejected the plan.
-Use `--TileOffload-backend triton`, permit a Triton fallback, or inspect the detailed
-rejection. `--TileOffload-no-backend-fallback` is useful in tests that must prove a
+Use `--tileoff-backend triton`, permit a Triton fallback, or inspect the detailed
+rejection. `--tileoff-no-backend-fallback` is useful in tests that must prove a
 specific backend handled every kernel.
 
-### Driver fails at `TileOffload-pipeline`
+### Driver fails at `tileoffload-pipeline`
 
-Re-run with `--TileOffload-verbose --TileOffload-keep`, execute the printed `fir-opt`
+Re-run with `--tileoff-verbose --tileoff-keep`, execute the printed `fir-opt`
 command directly, and inspect the retained `.fir`, `.kernels.ttir`,
 `.kernels.json`, and `.host.fir` files.
 
@@ -1736,22 +1684,22 @@ materialized/inlined, and only then invokes NVPTX `llc`.
 If `ptxas` still reports an unresolved symbol such as `__nv_sqrt`, ensure
 `LLVM_LINK`, `OPT`, and `LLC` come from compatible LLVM builds and that the
 selected libdevice is compatible with them. Override discovery with
-`--TileOffload-cuda-libdevice FILE` or `TILEOFF_CUDA_LIBDEVICE`, retain intermediates,
+`--tileoff-cuda-libdevice FILE` or `TILEOFF_CUDA_LIBDEVICE`, retain intermediates,
 and run `ptxas` on the generated PTX directly.
 
 ### HIP/ROCm toolchain errors
 
-For `--TileOffload-target hip`, confirm that:
+For `--tileoff-target hip`, confirm that:
 
-- `--TileOffload-gpu-arch` names the installed GPU, for example `gfx90a` or `gfx942`;
+- `--tileoff-gpu-arch` names the installed GPU, for example `gfx90a` or `gfx942`;
 - `ROCM_PATH` points to the intended ROCm installation;
 - `LLC`, `MLIR_TRANSLATE`, and `LD_LLD` are compatible with the Triton build;
 - the device-library directory contains `ocml.bc`, `ockl.bc`, the required
   `oclc_*` control modules, and an ISA module for the selected `gfx...`; and
-- the final link also uses `--TileOffload-target hip` and can find `libamdhip64`.
+- the final link also uses `--tileoff-target hip` and can find `libamdhip64`.
 
-Override device-library discovery with `--TileOffload-rocm-device-lib-dir` and HIP
-runtime discovery with `--TileOffload-hip-lib-dir`. If Triton's AMD pass spellings
+Override device-library discovery with `--tileoff-rocm-device-lib-dir` and HIP
+runtime discovery with `--tileoff-hip-lib-dir`. If Triton's AMD pass spellings
 differ from the defaults, set `TILEOFF_HIP_TTIR_TO_TTGIR_PASSES` and/or
 `TILEOFF_HIP_TTGIR_TO_LLVM_PASSES`.
 
@@ -1765,7 +1713,7 @@ CUDA objects carry `accelerator_target=cuda` with PTX/cubin images; HIP objects
 carry `accelerator_target=hip` with HSACO images. A target/image mismatch means
 the object was linked against the wrong TileOffload runtime or bundles for different
 targets were mixed. Recompile consistently and repeat the same
-`--TileOffload-target` on the final link.
+`--tileoff-target` on the final link.
 
 ### `no kernels were emitted`
 
