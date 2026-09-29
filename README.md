@@ -73,7 +73,7 @@ TileOffload currently provides:
 - derived-component data designators such as
   `chunk%tiles(1)%field%density0`;
 - `no_copyback` launch behavior for device-resident outputs;
-- opt-in asynchronous resident launches with `tileoff_ASYNC_RESIDENT=1`;
+- opt-in asynchronous resident launches with `TILEOFF_ASYNC_RESIDENT=1`;
 - explicit synchronization with `!$tileoff wait`;
 - IEEE-default FP32 matmul and explicit `matmul_precision(tf32|tf32x3)`;
 - explicit-shape, assumed-shape, pointer/heap-backed, and allocatable arrays
@@ -157,7 +157,7 @@ For CUDA, make the CUDA Driver API and libdevice installation discoverable:
 export CUDA_LIB_DIR=/usr/local/cuda/lib64
 
 # Usually auto-detected; set this only when necessary.
-export tileoff_CUDA_LIBDEVICE=/usr/local/cuda/nvvm/libdevice/libdevice.10.bc
+export TILEOFF_CUDA_LIBDEVICE=/usr/local/cuda/nvvm/libdevice/libdevice.10.bc
 ```
 
 For HIP, provide a ROCm installation and `ld.lld`:
@@ -172,18 +172,18 @@ Configure one or both runtime targets:
 ```sh
 cmake -S llvm -B build -G Ninja \
   -DLLVM_ENABLE_PROJECTS="clang;mlir;flang" \
-  -DFLANG_tileoff_RUNTIME=ON \
-  -DFLANG_tileoff_RUNTIME_BACKEND=BOTH
+  -DFLANG_TILEOFF_RUNTIME=ON \
+  -DFLANG_TILEOFF_RUNTIME_BACKEND=BOTH
 ```
 
-`FLANG_tileoff_RUNTIME_BACKEND` accepts `CUDA`, `HIP`, or `BOTH` and defaults to
+`FLANG_TILEOFF_RUNTIME_BACKEND` accepts `CUDA`, `HIP`, or `BOTH` and defaults to
 `CUDA`. A HIP or `BOTH` build must find `hip/hip_runtime_api.h` and
 `libamdhip64`; set `ROCM_PATH`, `HIP_PATH`, `HIP_DRIVER_INCLUDE_DIR`, or
 `HIP_DRIVER_LIBRARY` when they are outside normal locations. A CUDA or `BOTH`
 build must find the CUDA driver headers and library.
 
 `FLANG_TileOffload=ON` remains a compatibility spelling when
-`FLANG_tileoff_RUNTIME` is not set explicitly.
+`FLANG_TILEOFF_RUNTIME` is not set explicitly.
 
 Typical rebuild targets are:
 
@@ -209,7 +209,7 @@ changes.
 
 NVTX instrumentation is optional and disabled by default in the revised runtime.
 A normal runtime build does not require `nvtx3/nvtx3.hpp`. For an instrumented
-build, define `tileoff_ENABLE_NVTX=1` on the runtime CMake target, add the directory
+build, define `TILEOFF_ENABLE_NVTX=1` on the runtime CMake target, add the directory
 containing `nvtx3/` to its include paths, and link `${CMAKE_DL_LIBS}` where needed.
 Set include paths in CMake and regenerate the Ninja build; do not edit generated
 `build.ninja` rules. Runtime targets also require the platform thread dependency
@@ -263,7 +263,7 @@ Compile, link, and run it on NVIDIA CUDA (the default target):
 /path/to/TileOffload/bin/TileOffload-flang \
   --TileOffload-target cuda --TileOffload-gpu-arch sm_90a \
   example.f90 -O3 -o example
-tileoff_DEVICE=0 ./example
+TILEOFF_DEVICE=0 ./example
 ```
 
 Compile the same source for AMD HIP/ROCm:
@@ -272,7 +272,7 @@ Compile the same source for AMD HIP/ROCm:
 /path/to/TileOffload/bin/TileOffload-flang \
   --TileOffload-target hip --TileOffload-gpu-arch gfx942 \
   example.f90 -O3 -o example
-tileoff_DEVICE=0 ./example
+TILEOFF_DEVICE=0 ./example
 ```
 
 For separate compilation:
@@ -363,7 +363,7 @@ Default logical tiles are:
 | f32 matrix multiplication | `16, 16, 32` |
 | f64 matrix multiplication | `16, 16, 8` |
 
-Use `tileoff_DEBUG=1` to print the grid, logical tile, subgroup, and hardware
+Use `TILEOFF_DEBUG=1` to print the grid, logical tile, subgroup, and hardware
 block selected for each launch. The generated per-kernel JSON is the
 authoritative schedule.
 
@@ -870,12 +870,12 @@ Partial and scratch buffers are cached as grow-only workspaces per accelerator
 context. Repeated reductions reuse those allocations.
 
 ```sh
-tileoff_REDUCTION_STATS=1 ./program
+TILEOFF_REDUCTION_STATS=1 ./program
 ```
 
 prints allocation, growth, reuse, capacity, primary-launch, and stage-launch
 counters at process exit. These workspace counters cover the original partial
-and scratch buffers, not every auxiliary result allocation. `tileoff_DEBUG=1` prints individual stages.
+and scratch buffers, not every auxiliary result allocation. `TILEOFF_DEBUG=1` prints individual stages.
 
 The revised multi-result finalization path enqueues the final reduction stages
 and preserves each result in a packed device buffer. The device-stage path uses
@@ -942,7 +942,7 @@ A source containing TileOffload data or synchronization directives but no
 lowering, detects that the generated kernel list is empty, skips device code
 generation and embedding, and emits a host-only TileOffload object.
 
-`tileoff_ALLOW_EMPTY_KERNELS=1` is not required for this case. It is only an
+`TILEOFF_ALLOW_EMPTY_KERNELS=1` is not required for this case. It is only an
 escape hatch when a source contains an TileOffload `parallel` launch but the pipeline
 unexpectedly emits no kernel; the default is to diagnose that inconsistency.
 
@@ -1049,28 +1049,28 @@ TileOffload-flang --TileOffload-verbose --TileOffload-keep \
 | `FLANG`, `FIROPT`, `TCO`, `CLANG` | Optional tool overrides. |
 | `FLANG_INTRINSIC_MODULES_PATH` | Override Flang's intrinsic-module directory. |
 | `CUDA_LIB_DIR` | CUDA Driver API library directory. |
-| `tileoff_CUDA_LIBDEVICE` | CUDA `libdevice.10.bc` override. The driver auto-detects it when generated IR references `__nv_*`. |
+| `TILEOFF_CUDA_LIBDEVICE` | CUDA `libdevice.10.bc` override. The driver auto-detects it when generated IR references `__nv_*`. |
 | `ROCM_PATH` | ROCm installation prefix; default `/opt/rocm`. |
-| `tileoff_ROCM_DEVICE_LIB_DIR` | ROCm bitcode directory containing OCML/OCKL and control bitcode. |
-| `tileoff_HIP_LIB_DIR` | Directory containing `libamdhip64`; defaults to `$ROCM_PATH/lib` or `lib64`. |
-| `tileoff_LAUNCH_ABI` | Default host launch ABI; `3`. An explicit `--TileOffload-launch-abi` overrides it. |
-| `tileoff_TARGET` | Default accelerator target: `cuda` or `hip`. |
-| `tileoff_GPU_ARCH` | Default target architecture such as `sm_90a` or `gfx942`. |
-| `tileoff_SM` | CUDA architecture compatibility variable. |
-| `tileoff_AMD_GPU_ARCH` | AMD architecture compatibility variable; default `gfx90a` when HIP is selected and no architecture is supplied. |
-| `tileoff_BACKEND` | Preferred backend; default `auto`. |
-| `tileoff_FALLBACK_BACKEND` | Fallback backend; default `triton`. |
-| `tileoff_ALLOW_BACKEND_FALLBACK` | Boolean backend-fallback control. |
-| `tileoff_NUM_WARPS` | Requested warp count; current default `1`. |
-| `tileoff_THREADS_PER_WARP` | Subgroup width; current default `32`. |
-| `tileoff_NUM_STAGES` | Pipeline stages; current default `3`. |
-| `tileoff_F64_MATMUL_STRATEGY` | Default f64 matmul strategy. |
-| `tileoff_WORKDIR` | Intermediate-directory parent. |
-| `tileoff_TTIR_TO_TTGIR_PASSES` | Advanced TTIR-to-TTGIR pass-pipeline override. |
-| `tileoff_TTGIR_TO_LLVM_PASSES` | Advanced TTGIR-to-LLVM-MLIR pass-pipeline override. |
-| `tileoff_HIP_TTIR_TO_TTGIR_PASSES` | HIP-only TTIR-to-TritonGPU pass-pipeline override. |
-| `tileoff_HIP_TTGIR_TO_LLVM_PASSES` | HIP-only TritonGPU-to-LLVM-MLIR pass-pipeline override. |
-| `tileoff_ALLOW_EMPTY_KERNELS` | Permit an empty kernel list despite an TileOffload `parallel` launch; default false. Data-only sources do not need it. |
+| `TILEOFF_ROCM_DEVICE_LIB_DIR` | ROCm bitcode directory containing OCML/OCKL and control bitcode. |
+| `TILEOFF_HIP_LIB_DIR` | Directory containing `libamdhip64`; defaults to `$ROCM_PATH/lib` or `lib64`. |
+| `TILEOFF_LAUNCH_ABI` | Default host launch ABI; `3`. An explicit `--TileOffload-launch-abi` overrides it. |
+| `TILEOFF_TARGET` | Default accelerator target: `cuda` or `hip`. |
+| `TILEOFF_GPU_ARCH` | Default target architecture such as `sm_90a` or `gfx942`. |
+| `TILEOFF_SM` | CUDA architecture compatibility variable. |
+| `TILEOFF_AMD_GPU_ARCH` | AMD architecture compatibility variable; default `gfx90a` when HIP is selected and no architecture is supplied. |
+| `TILEOFF_BACKEND` | Preferred backend; default `auto`. |
+| `TILEOFF_FALLBACK_BACKEND` | Fallback backend; default `triton`. |
+| `TILEOFF_ALLOW_BACKEND_FALLBACK` | Boolean backend-fallback control. |
+| `TILEOFF_NUM_WARPS` | Requested warp count; current default `1`. |
+| `TILEOFF_THREADS_PER_WARP` | Subgroup width; current default `32`. |
+| `TILEOFF_NUM_STAGES` | Pipeline stages; current default `3`. |
+| `TILEOFF_F64_MATMUL_STRATEGY` | Default f64 matmul strategy. |
+| `TILEOFF_WORKDIR` | Intermediate-directory parent. |
+| `TILEOFF_TTIR_TO_TTGIR_PASSES` | Advanced TTIR-to-TTGIR pass-pipeline override. |
+| `TILEOFF_TTGIR_TO_LLVM_PASSES` | Advanced TTGIR-to-LLVM-MLIR pass-pipeline override. |
+| `TILEOFF_HIP_TTIR_TO_TTGIR_PASSES` | HIP-only TTIR-to-TritonGPU pass-pipeline override. |
+| `TILEOFF_HIP_TTGIR_TO_LLVM_PASSES` | HIP-only TritonGPU-to-LLVM-MLIR pass-pipeline override. |
+| `TILEOFF_ALLOW_EMPTY_KERNELS` | Permit an empty kernel list despite an TileOffload `parallel` launch; default false. Data-only sources do not need it. |
 
 The work directory must be writable and contain no whitespace because some
 toolchain components and generated command lines require whitespace-free
@@ -1080,21 +1080,21 @@ intermediate paths.
 
 | Variable | Purpose |
 | --- | --- |
-| `tileoff_DEVICE` | Device ordinal for either runtime. Takes precedence over the vendor-specific variable; default `0`. |
-| `tileoff_CUDA_DEVICE` | CUDA device ordinal when `tileoff_DEVICE` is unset. |
-| `tileoff_HIP_DEVICE` | HIP device ordinal when `tileoff_DEVICE` is unset. |
-| `tileoff_USE_CURRENT_CONTEXT` | Use the caller's current CUDA or HIP context instead of retaining a primary context. |
-| `tileoff_ASYNC_RESIDENT` | Set to `1` to enqueue eligible cached-array launches without waiting after each launch; unset/default retains synchronous completion. |
-| `tileoff_DEBUG` | Print initialization, bundle, cache, data-region, launch, grid, tile, ABI, and reduction diagnostics. |
-| `tileoff_REDUCTION_STATS` | Print aggregate reduction-workspace counters at exit. |
-| `tileoff_MATMUL_SHARED_BYTES` | Advanced f32 matmul dynamic-shared-memory override; cannot be below the computed safe minimum. |
-| `tileoff_MATMUL_F64_SHARED_BYTES` | Advanced f64 matmul dynamic-shared-memory override; cannot be below the computed safe minimum. |
-| `tileoff_PTX_DIR`, `tileoff_PTX`, `tileoff_KERNELS_JSON` | Legacy CUDA external-bundle debugging fallbacks. Driver-built objects normally use embedded images and JSON. |
+| `TILEOFF_DEVICE` | Device ordinal for either runtime. Takes precedence over the vendor-specific variable; default `0`. |
+| `TILEOFF_CUDA_DEVICE` | CUDA device ordinal when `TILEOFF_DEVICE` is unset. |
+| `TILEOFF_HIP_DEVICE` | HIP device ordinal when `TILEOFF_DEVICE` is unset. |
+| `TILEOFF_USE_CURRENT_CONTEXT` | Use the caller's current CUDA or HIP context instead of retaining a primary context. |
+| `TILEOFF_ASYNC_RESIDENT` | Set to `1` to enqueue eligible cached-array launches without waiting after each launch; unset/default retains synchronous completion. |
+| `TILEOFF_DEBUG` | Print initialization, bundle, cache, data-region, launch, grid, tile, ABI, and reduction diagnostics. |
+| `TILEOFF_REDUCTION_STATS` | Print aggregate reduction-workspace counters at exit. |
+| `TILEOFF_MATMUL_SHARED_BYTES` | Advanced f32 matmul dynamic-shared-memory override; cannot be below the computed safe minimum. |
+| `TILEOFF_MATMUL_F64_SHARED_BYTES` | Advanced f64 matmul dynamic-shared-memory override; cannot be below the computed safe minimum. |
+| `TILEOFF_PTX_DIR`, `TILEOFF_PTX`, `TILEOFF_KERNELS_JSON` | Legacy CUDA external-bundle debugging fallbacks. Driver-built objects normally use embedded images and JSON. |
 
 ### Asynchronous resident execution
 
 ```sh
-tileoff_ASYNC_RESIDENT=1 tileoff_DEVICE=0 ./program
+TILEOFF_ASYNC_RESIDENT=1 TILEOFF_DEVICE=0 ./program
 ```
 
 This is independent of the host launch ABI: selecting v3 does not enable async
@@ -1131,11 +1131,11 @@ performance measurement.
 
 The CUDA build uses the CUDA Driver API; the HIP build uses an internal adapter
 over the HIP runtime/module APIs. By default each initializes its platform,
-selects `tileoff_DEVICE` or the vendor-specific device variable, retains the
+selects `TILEOFF_DEVICE` or the vendor-specific device variable, retains the
 device's primary context, and restores the caller's previous current context on
 return.
 
-With `tileoff_USE_CURRENT_CONTEXT=1`, the caller must make a context for the
+With `TILEOFF_USE_CURRENT_CONTEXT=1`, the caller must make a context for the
 selected platform current before entering TileOffload. Runtime state is created for
 that exact context and the runtime does not retain or release it. Using the
 option with no current context is a fatal error.
@@ -1235,7 +1235,7 @@ context guard; it does not change the numerical device kernel.
 # Default v3; an environment override can change this.
 TileOffload-flang -O3 -c kernel.f90
 
-# Explicit selection overrides tileoff_LAUNCH_ABI.
+# Explicit selection overrides TILEOFF_LAUNCH_ABI.
 TileOffload-flang --TileOffload-launch-abi 3 -O3 -c kernel.f90
 TileOffload-flang --TileOffload-launch-abi 2 -O3 -c kernel.f90
 ```
@@ -1415,7 +1415,7 @@ For CUDA tracing, use the application's normal single-process invocation and
 working directory, with a unique report name:
 
 ```sh
-tileoff_ASYNC_RESIDENT=1 nsys profile \
+TILEOFF_ASYNC_RESIDENT=1 nsys profile \
   --trace=cuda,nvtx --sample=none \
   -o cloverleaf-TileOffload ./clover_leaf
 
@@ -1442,7 +1442,7 @@ When GPU counter access is available, collect a few invocations of one kernel:
 
 ```sh
 # Replace ENTRY_NAME with the exact entry from the current generated PTX.
-tileoff_ASYNC_RESIDENT=1 ncu \
+TILEOFF_ASYNC_RESIDENT=1 ncu \
   --kernel-name-base function --kernel-name ENTRY_NAME \
   --launch-skip 10 --launch-count 3 --kill yes \
   --section LaunchStats --section Occupancy \
@@ -1537,7 +1537,7 @@ test has been migrated; run the suite and inspect remaining failures.
 
 ```sh
 cmake -S tests/reduction -B build/reduction \
-  -Dtileoff_REDUCTION_TEST_DRIVER="$PWD/bin/TileOffload-flang" \
+  -DTILEOFF_REDUCTION_TEST_DRIVER="$PWD/bin/TileOffload-flang" \
   -DLLVM_BUILD="$LLVM_BUILD" \
   -DTRITON_OPT="$TRITON_OPT" \
   -DMLIR_TRANSLATE="$MLIR_TRANSLATE" \
@@ -1547,7 +1547,7 @@ cmake --build build/reduction
 ctest --test-dir build/reduction -V
 ```
 
-Configure with `-Dtileoff_NUM_WARPS=4` to exercise multi-warp reductions.
+Configure with `-DTILEOFF_NUM_WARPS=4` to exercise multi-warp reductions.
 
 ### CUDA and HIP smoke tests
 
@@ -1558,12 +1558,12 @@ on each available target before testing a full application:
 # NVIDIA
 TileOffload-flang --TileOffload-target cuda --TileOffload-gpu-arch sm_90a \
   vector_add.f90 -O3 -o vector_add.cuda
-tileoff_DEBUG=1 tileoff_DEVICE=0 ./vector_add.cuda
+TILEOFF_DEBUG=1 TILEOFF_DEVICE=0 ./vector_add.cuda
 
 # AMD
 TileOffload-flang --TileOffload-target hip --TileOffload-gpu-arch gfx942 \
   vector_add.f90 -O3 -o vector_add.hip
-tileoff_DEBUG=1 tileoff_DEVICE=0 ./vector_add.hip
+TILEOFF_DEBUG=1 TILEOFF_DEVICE=0 ./vector_add.hip
 ```
 
 Use an architecture that exactly matches the installed GPU. The HIP path is
@@ -1592,7 +1592,7 @@ validation error is a failed benchmark regardless of reported bandwidth.
 ```sh
 TileOffload-flang --TileOffload-keep --TileOffload-verbose \
   --TileOffload-target TARGET --TileOffload-gpu-arch ARCH -c kernel.f90
-tileoff_DEBUG=1 tileoff_DEVICE=0 ./program
+TILEOFF_DEBUG=1 TILEOFF_DEVICE=0 ./program
 ```
 
 For CUDA memory checking:
@@ -1736,7 +1736,7 @@ materialized/inlined, and only then invokes NVPTX `llc`.
 If `ptxas` still reports an unresolved symbol such as `__nv_sqrt`, ensure
 `LLVM_LINK`, `OPT`, and `LLC` come from compatible LLVM builds and that the
 selected libdevice is compatible with them. Override discovery with
-`--TileOffload-cuda-libdevice FILE` or `tileoff_CUDA_LIBDEVICE`, retain intermediates,
+`--TileOffload-cuda-libdevice FILE` or `TILEOFF_CUDA_LIBDEVICE`, retain intermediates,
 and run `ptxas` on the generated PTX directly.
 
 ### HIP/ROCm toolchain errors
@@ -1752,8 +1752,8 @@ For `--TileOffload-target hip`, confirm that:
 
 Override device-library discovery with `--TileOffload-rocm-device-lib-dir` and HIP
 runtime discovery with `--TileOffload-hip-lib-dir`. If Triton's AMD pass spellings
-differ from the defaults, set `tileoff_HIP_TTIR_TO_TTGIR_PASSES` and/or
-`tileoff_HIP_TTGIR_TO_LLVM_PASSES`.
+differ from the defaults, set `TILEOFF_HIP_TTIR_TO_TTGIR_PASSES` and/or
+`TILEOFF_HIP_TTGIR_TO_LLVM_PASSES`.
 
 An error that the AMDGPU object or HSACO was not generated usually indicates a
 target-architecture or LLVM/ROCm version mismatch. Retain intermediates and run
@@ -1772,7 +1772,7 @@ targets were mixed. Recompile consistently and repeat the same
 Data-only TileOffload sources are accepted automatically. If the message says that
 an TileOffload `parallel` launch was present, recognition or pipeline output is
 inconsistent. Inspect retained FIR/JSON rather than setting
-`tileoff_ALLOW_EMPTY_KERNELS=1` in normal builds; the variable suppresses a
+`TILEOFF_ALLOW_EMPTY_KERNELS=1` in normal builds; the variable suppresses a
 safety check and does not make a missing kernel execute.
 
 ### Undefined `_QP...` references when linking plain objects
@@ -1850,7 +1850,7 @@ Check the lifetime in this order:
 6. Did an inner data region defer copyout because an outer owner remained?
 7. Was the allocation released only after its final consumer?
 
-Enable `tileoff_DEBUG=1` and inspect context, bundle, cache, region depth,
+Enable `TILEOFF_DEBUG=1` and inspect context, bundle, cache, region depth,
 ownership count, pack targets, byte counts, extents, lower bounds, strides,
 grid, tile, subgroup/block size, accelerator target, and image metadata.
 
