@@ -7,12 +7,20 @@ import statistics
 from collections import defaultdict
 
 
+# FP32 and FP64 remain separate benchmark groups from the CSV.
+# DAXPY is already the double-precision AXPY benchmark.
 KNOWN_TARGET_ORDER = [
     "tileoff_vector_add",
     "cuda_vector_add",
     "openmp_vector_add",
     "openmp_gpu_vector_add",
     "openacc_vector_add",
+
+    "tileoff_vector_add_f64",
+    "cuda_vector_add_f64",
+    "openmp_vector_add_f64",
+    "openmp_gpu_vector_add_f64",
+    "openacc_vector_add_f64",
 
     "tileoff_saxpy",
     "cuda_saxpy",
@@ -32,11 +40,23 @@ KNOWN_TARGET_ORDER = [
     "openmp_gpu_axpby",
     "openacc_axpby",
 
+    "tileoff_axpby_f64",
+    "cuda_axpby_f64",
+    "openmp_axpby_f64",
+    "openmp_gpu_axpby_f64",
+    "openacc_axpby_f64",
+
     "tileoff_matrix_add_2d",
     "cuda_matrix_add_2d",
     "openmp_matrix_add_2d",
     "openmp_gpu_matrix_add_2d",
     "openacc_matrix_add_2d",
+
+    "tileoff_matrix_add_2d_f64",
+    "cuda_matrix_add_2d_f64",
+    "openmp_matrix_add_2d_f64",
+    "openmp_gpu_matrix_add_2d_f64",
+    "openacc_matrix_add_2d_f64",
 
     "tileoff_matmul_2d",
     "tileoff_matmul_2d_tf32",
@@ -46,11 +66,42 @@ KNOWN_TARGET_ORDER = [
     "openmp_matmul_2d",
     "openmp_gpu_matmul_2d",
     "openacc_matmul_2d",
+
+    "tileoff_matmul_2d_f64",
+    "cuda_matmul_2d_f64",
+    "cuda_cublas_matmul_2d_f64",
+    "openmp_matmul_2d_f64",
+    "openmp_gpu_matmul_2d_f64",
+    "openacc_matmul_2d_f64",
+
+    "tileoff_reduction_sum",
+    "cuda_reduction_sum",
+    "openmp_reduction_sum",
+    "openmp_gpu_reduction_sum",
+    "openacc_reduction_sum",
+
+    "tileoff_reduction_sum_f64",
+    "cuda_reduction_sum_f64",
+    "openmp_reduction_sum_f64",
+    "openmp_gpu_reduction_sum_f64",
+    "openacc_reduction_sum_f64",
+
+    "tileoff_reduction_dot",
+    "cuda_reduction_dot",
+    "openmp_reduction_dot",
+    "openmp_gpu_reduction_dot",
+    "openacc_reduction_dot",
+
+    "tileoff_reduction_dot_f64",
+    "cuda_reduction_dot_f64",
+    "openmp_reduction_dot_f64",
+    "openmp_gpu_reduction_dot_f64",
+    "openacc_reduction_dot_f64",
 ]
 
 
 KNOWN_BACKEND_ORDER = [
-    "tileoffload",
+    "tileoff",
     "cuda",
     "cuda_cublas",
     "openmp",
@@ -419,4 +470,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

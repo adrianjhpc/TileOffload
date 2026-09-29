@@ -84,6 +84,9 @@ set(TILEOFF_THREADS_PER_WARP "32" CACHE STRING
 set(TILEOFF_MATMUL_NUM_WARPS "4" CACHE STRING
   "Number of Triton warps for TileOffload matmul benchmarks")
 
+set(TILEOFF_MATMUL_TF32_NUM_WARPS "4" CACHE STRING
+  "Number of Triton warps for TileOffload tf32 matmul benchmarks")
+
 set(TILEOFF_MATMUL_F64_NUM_WARPS "4" CACHE STRING
   "Number of Triton warps for TileOffload f64 matmul benchmarks")
 

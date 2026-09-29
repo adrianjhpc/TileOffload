@@ -1,6 +1,6 @@
 program matmul_2d_tf32_tileoffload
   use bench_utils
-  use tileoff_matmul_2d_kernel
+  use tileoff_matmul_2d_tf32_kernel
   implicit none
 
   integer(8) :: n, m, k
