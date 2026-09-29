@@ -1,4 +1,4 @@
-program saxpy_TileOffload
+program saxpy_tileoffload          
   use bench_utils
   use tileoff_saxpy_kernel
   implicit none

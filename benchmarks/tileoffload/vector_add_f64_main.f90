@@ -1,4 +1,4 @@
-program vector_add_f64_TileOffload
+program vector_add_f64_tileoffload          
   use bench_utils
   use tileoff_vector_add_f64_kernel
   implicit none

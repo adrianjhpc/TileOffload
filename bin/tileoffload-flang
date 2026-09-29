@@ -46,11 +46,11 @@ TileOffload options:
   --tileoff-no-backend-fallback
                            Fail instead of using the fallback backend
   --tileoff-launch-abi N     Host launch ABI: 2 or 3 (default).
-  --tileoff-num-warps N      Triton warps; default TILEOFFLOAD_NUM_WARPS or 1.
+  --tileoff-num-warps N      Triton warps; default TILEOFF_NUM_WARPS or 1.
                            Multi-warp reduction lowering is automatic.
   --tileoff-threads-per-warp N
                            Threads per warp; CUDA currently requires 32
-  --tileoff-num-stages N     Triton pipeline stages; default TILEOFFLOAD_NUM_STAGES or 3
+  --tileoff-num-stages N     Triton pipeline stages; default TILEOFF_NUM_STAGES or 3
   --tileoff-f64-matmul-strategy NAME
                            reduce, fma, or dot
   --tileoff-cuda-lib-dir DIR CUDA driver library directory
@@ -93,34 +93,34 @@ Environment:
   CUDA_LIB_DIR             Optional CUDA driver library directory
 
 Optional environment:
-  TILEOFFLOAD_LAUNCH_ABI         host launch ABI, defaults to 3
-  TILEOFFLOAD_NUM_WARPS          number of warps to use, defaults to 1
-  TILEOFFLOAD_THREADS_PER_WARP   threads per warp, defaults to 32
-  TILEOFFLOAD_NUM_STAGES         number of Triton pipeline stages, defaults to 3
-  TILEOFFLOAD_SM                 default CUDA SM, default 80
-  TILEOFFLOAD_TARGET             cuda (default) or hip
-  TILEOFFLOAD_GPU_ARCH           target architecture (sm_90a or gfx942)
-  TILEOFFLOAD_AMD_GPU_ARCH       AMD architecture compatibility variable
-  TILEOFFLOAD_CUDA_TILE_TRANSLATE CUDA Tile translator executable (default cuda-tile-translate)
-  TILEOFFLOAD_TILEIRAS           Tile IR assembler executable (default tileiras)
-  TILEOFFLOAD_BACKEND            preferred backend, defaults to auto
-  TILEOFFLOAD_FALLBACK_BACKEND   fallback backend, defaults to triton
-  TILEOFFLOAD_ALLOW_BACKEND_FALLBACK
+  TILEOFF_LAUNCH_ABI         host launch ABI, defaults to 3
+  TILEOFF_NUM_WARPS          number of warps to use, defaults to 1
+  TILEOFF_THREADS_PER_WARP   threads per warp, defaults to 32
+  TILEOFF_NUM_STAGES         number of Triton pipeline stages, defaults to 3
+  TILEOFF_SM                 default CUDA SM, default 80
+  TILEOFF_TARGET             cuda (default) or hip
+  TILEOFF_GPU_ARCH           target architecture (sm_90a or gfx942)
+  TILEOFF_AMD_GPU_ARCH       AMD architecture compatibility variable
+  TILEOFF_CUDA_TILE_TRANSLATE CUDA Tile translator executable (default cuda-tile-translate)
+  TILEOFF_TILEIRAS           Tile IR assembler executable (default tileiras)
+  TILEOFF_BACKEND            preferred backend, defaults to auto
+  TILEOFF_FALLBACK_BACKEND   fallback backend, defaults to triton
+  TILEOFF_ALLOW_BACKEND_FALLBACK
                            boolean; defaults to true
-  TILEOFFLOAD_CUDA_LIBDEVICE     CUDA libdevice.10.bc override. Required only when
+  TILEOFF_CUDA_LIBDEVICE     CUDA libdevice.10.bc override. Required only when
                            generated device IR references __nv_* functions.
   ROCM_PATH                ROCm installation prefix; default /opt/rocm
-  TILEOFFLOAD_ROCM_DEVICE_LIB_DIR
+  TILEOFF_ROCM_DEVICE_LIB_DIR
                            ROCm bitcode directory containing ocml.bc/ockl.bc
-  TILEOFFLOAD_HIP_LIB_DIR        directory containing libamdhip64
+  TILEOFF_HIP_LIB_DIR        directory containing libamdhip64
   CUDA_HOME, CUDA_PATH, CUDAToolkit_ROOT
                            CUDA roots considered during libdevice discovery.
-  TILEOFFLOAD_WORKDIR            default work directory. If unset, uses a temp dir.
-  TILEOFFLOAD_CUDA_DEVICE        CUDA device ordinal; may be changed between calls.
-  TILEOFFLOAD_USE_CURRENT_CONTEXT
+  TILEOFF_WORKDIR            default work directory. If unset, uses a temp dir.
+  TILEOFF_CUDA_DEVICE        CUDA device ordinal; may be changed between calls.
+  TILEOFF_USE_CURRENT_CONTEXT
                            use the caller's current CUDA context instead of a
                            retained primary context selected by device ordinal.
-  TILEOFFLOAD_REDUCTION_STATS    print reduction workspace counters at process exit
+  TILEOFF_REDUCTION_STATS    print reduction workspace counters at process exit
   FLANG                    override flang-new
   FLANG_INTRINSIC_MODULES_PATH
                            override Flang's precompiled intrinsic module dir
@@ -129,16 +129,16 @@ Optional environment:
   CLANG                    override clang
 
 Advanced environment:
-  TILEOFFLOAD_TTGIR_TO_LLVM_PASSES
+  TILEOFF_TTGIR_TO_LLVM_PASSES
                            Override TTGIR -> LLVM MLIR pass pipeline.
                            Parsed with shell-like quoting.
-  TILEOFFLOAD_TTIR_TO_TTGIR_PASSES
+  TILEOFF_TTIR_TO_TTGIR_PASSES
                            Override TTIR -> TTGIR pass pipeline.
                            Parsed with shell-like quoting.
-  TILEOFFLOAD_HIP_TTIR_TO_TTGIR_PASSES
-  TILEOFFLOAD_HIP_TTGIR_TO_LLVM_PASSES
+  TILEOFF_HIP_TTIR_TO_TTGIR_PASSES
+  TILEOFF_HIP_TTGIR_TO_LLVM_PASSES
                            HIP-specific pass-pipeline overrides.
-  TILEOFFLOAD_ALLOW_EMPTY_KERNELS
+  TILEOFF_ALLOW_EMPTY_KERNELS
                            Allow no recognized kernels even when an TileOffload
                            parallel launch was present. Data-only TileOffload
                            sources are accepted automatically.
@@ -635,7 +635,7 @@ resolve_cuda_libdevice() {
     return
   fi
 
-  die "generated CUDA device IR references __nv_* functions, but libdevice.10.bc was not found; set TILEOFFLOAD_CUDA_LIBDEVICE or pass --tileoff-cuda-libdevice"
+  die "generated CUDA device IR references __nv_* functions, but libdevice.10.bc was not found; set TILEOFF_CUDA_LIBDEVICE or pass --tileoff-cuda-libdevice"
 }
 
 link_cuda_libdevice_if_needed() {
@@ -726,7 +726,7 @@ resolve_rocm_device_libs() {
   fi
 
   [[ -n "$ROCM_DEVICE_LIB_DIR" && -d "$ROCM_DEVICE_LIB_DIR" ]] ||
-    die "ROCm device libraries were not found; set TILEOFFLOAD_ROCM_DEVICE_LIB_DIR or --tileoff-rocm-device-lib-dir"
+    die "ROCm device libraries were not found; set TILEOFF_ROCM_DEVICE_LIB_DIR or --tileoff-rocm-device-lib-dir"
   [[ -f "$ROCM_DEVICE_LIB_DIR/ocml.bc" ]] ||
     die "ROCm device library is missing: $ROCM_DEVICE_LIB_DIR/ocml.bc"
   [[ -f "$ROCM_DEVICE_LIB_DIR/ockl.bc" ]] ||
@@ -830,7 +830,7 @@ validate_no_triton_gpu_ops() {
     head -20 "$ttg_left" >&2
     echo >&2
     echo "This usually means the Triton pass pipeline did not fully lower TTGIR." >&2
-    echo "Check that triton-opt provides --convert-nv-gpu-to-llvm, or set TILEOFFLOAD_TTGIR_TO_LLVM_PASSES." >&2
+    echo "Check that triton-opt provides --convert-nv-gpu-to-llvm, or set TILEOFF_TTGIR_TO_LLVM_PASSES." >&2
     echo "The driver already lowers residual ttg.warp_id operations; this is another unlowered TritonGPU operation." >&2
     rm -f "$ttg_left" "$tt_left"
     exit 1
@@ -1361,7 +1361,7 @@ record_input() {
   if is_fortran_source "$input" || is_fortran_language "$CURRENT_LANGUAGE"; then
     index="${#SOURCES[@]}"
     SOURCES+=("$input")
-    LINK_SEQUENCE+=("__TILEOFFLOAD_SOURCE_${index}__")
+    LINK_SEQUENCE+=("__TILEOFF_SOURCE_${index}__")
   else
     OTHER_INPUTS+=("$input")
     LINK_SEQUENCE+=("$input")
@@ -1392,23 +1392,23 @@ DISABLE_TILEOFFLOAD=0
 FORCE_RUNTIME=0
 DISABLE_RUNTIME=0
 
-ACCELERATOR_TARGET="${TILEOFFLOAD_TARGET:-cuda}"
-GPU_ARCH="${TILEOFFLOAD_GPU_ARCH:-}"
-SM="${TILEOFFLOAD_SM:-sm_90a}"
-BACKEND="${TILEOFFLOAD_BACKEND:-auto}"
-FALLBACK_BACKEND="${TILEOFFLOAD_FALLBACK_BACKEND:-triton}"
-ALLOW_BACKEND_FALLBACK="${TILEOFFLOAD_ALLOW_BACKEND_FALLBACK:-true}"
-LAUNCH_ABI="${TILEOFFLOAD_LAUNCH_ABI:-3}"
-NUM_WARPS="${TILEOFFLOAD_NUM_WARPS:-1}"
-THREADS_PER_WARP="${TILEOFFLOAD_THREADS_PER_WARP:-}"
-NUM_STAGES="${TILEOFFLOAD_NUM_STAGES:-3}"
-F64_MATMUL_STRATEGY="${TILEOFFLOAD_F64_MATMUL_STRATEGY:-reduce}"
+ACCELERATOR_TARGET="${TILEOFF_TARGET:-cuda}"
+GPU_ARCH="${TILEOFF_GPU_ARCH:-}"
+SM="${TILEOFF_SM:-sm_90a}"
+BACKEND="${TILEOFF_BACKEND:-auto}"
+FALLBACK_BACKEND="${TILEOFF_FALLBACK_BACKEND:-triton}"
+ALLOW_BACKEND_FALLBACK="${TILEOFF_ALLOW_BACKEND_FALLBACK:-true}"
+LAUNCH_ABI="${TILEOFF_LAUNCH_ABI:-3}"
+NUM_WARPS="${TILEOFF_NUM_WARPS:-1}"
+THREADS_PER_WARP="${TILEOFF_THREADS_PER_WARP:-}"
+NUM_STAGES="${TILEOFF_NUM_STAGES:-3}"
+F64_MATMUL_STRATEGY="${TILEOFF_F64_MATMUL_STRATEGY:-reduce}"
 CUDA_LIB_DIR="${CUDA_LIB_DIR:-}"
-CUDA_LIBDEVICE="${TILEOFFLOAD_CUDA_LIBDEVICE:-}"
+CUDA_LIBDEVICE="${TILEOFF_CUDA_LIBDEVICE:-}"
 ROCM_PATH="${ROCM_PATH:-/opt/rocm}"
-ROCM_DEVICE_LIB_DIR="${TILEOFFLOAD_ROCM_DEVICE_LIB_DIR:-}"
-HIP_LIB_DIR="${TILEOFFLOAD_HIP_LIB_DIR:-}"
-WORKDIR_PARENT="${TILEOFFLOAD_WORKDIR:-}"
+ROCM_DEVICE_LIB_DIR="${TILEOFF_ROCM_DEVICE_LIB_DIR:-}"
+HIP_LIB_DIR="${TILEOFF_HIP_LIB_DIR:-}"
+WORKDIR_PARENT="${TILEOFF_WORKDIR:-}"
 
 KEEP=0
 VERBOSE=0
@@ -1772,12 +1772,12 @@ for source in "${SOURCES[@]}"; do
   fi
 done
 
-TILEOFFLOAD_SOURCE_COUNT=0
+TILEOFF_SOURCE_COUNT=0
 for value in "${SOURCE_IS_TILEOFFLOAD[@]}"; do
-  (( TILEOFFLOAD_SOURCE_COUNT += value )) || true
+  (( TILEOFF_SOURCE_COUNT += value )) || true
 done
 
-if [[ -n "$STOP_AFTER" && "$TILEOFFLOAD_SOURCE_COUNT" -ne 1 ]]; then
+if [[ -n "$STOP_AFTER" && "$TILEOFF_SOURCE_COUNT" -ne 1 ]]; then
   die "--tileoff-stop-after requires exactly one TileOffload source"
 fi
 
@@ -1785,11 +1785,11 @@ if [[ "$COMPILE_ONLY" == "1" && -n "$OUTPUT" && ${#SOURCES[@]} -ne 1 ]]; then
   die "cannot use -o with -c and multiple source files"
 fi
 
-if [[ "$COMPILE_ONLY" == "1" && ${#OTHER_INPUTS[@]} -gt 0 && "$TILEOFFLOAD_SOURCE_COUNT" -gt 0 ]]; then
+if [[ "$COMPILE_ONLY" == "1" && ${#OTHER_INPUTS[@]} -gt 0 && "$TILEOFF_SOURCE_COUNT" -gt 0 ]]; then
   die "object and library inputs are not accepted with -c"
 fi
 
-if [[ "$TILEOFFLOAD_SOURCE_COUNT" == "0" && "$FORCE_RUNTIME" == "0" ]]; then
+if [[ "$TILEOFF_SOURCE_COUNT" == "0" && "$FORCE_RUNTIME" == "0" ]]; then
   if [[ "$COMPILE_ONLY" == "1" ]]; then
     run "$FLANG" "${FLANG_ARGS[@]}"
     exit 0
@@ -1827,7 +1827,7 @@ case "$F64_MATMUL_STRATEGY" in
   *) die "invalid TileOffload F64 matmul strategy '$F64_MATMUL_STRATEGY'; expected reduce, fma, or dot" ;;
 esac
 
-if (( TILEOFFLOAD_SOURCE_COUNT > 0 )); then
+if (( TILEOFF_SOURCE_COUNT > 0 )); then
   ALLOW_BACKEND_FALLBACK="$(normalize_bool "$ALLOW_BACKEND_FALLBACK")"
   [[ "$BACKEND" =~ ^[A-Za-z0-9][A-Za-z0-9._+-]*$ ]] ||
     die "invalid TileOffload backend name '$BACKEND'"
@@ -1856,7 +1856,7 @@ if (( TILEOFFLOAD_SOURCE_COUNT > 0 )); then
     TRITON_TARGET="cuda:$SM_NUM"
     [[ -n "$THREADS_PER_WARP" ]] || THREADS_PER_WARP=32
   else
-    [[ -n "$GPU_ARCH" ]] || GPU_ARCH="${TILEOFFLOAD_AMD_GPU_ARCH:-gfx90a}"
+    [[ -n "$GPU_ARCH" ]] || GPU_ARCH="${TILEOFF_AMD_GPU_ARCH:-gfx90a}"
     GPU_ARCH="${GPU_ARCH#amd:}"
     [[ "$GPU_ARCH" =~ ^gfx[0-9a-f]+$ ]] ||
       die "invalid AMD GPU architecture '$GPU_ARCH'; expected e.g. gfx90a or gfx942"
@@ -1915,12 +1915,12 @@ if [[ -n "$CUDA_LIB_DIR" && ! -d "$CUDA_LIB_DIR" ]]; then
   die "CUDA library directory does not exist: $CUDA_LIB_DIR"
 fi
 
-if (( TILEOFFLOAD_SOURCE_COUNT > 0 )) && \
+if (( TILEOFF_SOURCE_COUNT > 0 )) && \
     [[ "$ACCELERATOR_TARGET" == "cuda" && -n "$CUDA_LIBDEVICE" && ! -f "$CUDA_LIBDEVICE" ]]; then
   die "CUDA libdevice bitcode does not exist: $CUDA_LIBDEVICE"
 fi
 
-if (( TILEOFFLOAD_SOURCE_COUNT > 0 )) && [[ "$ACCELERATOR_TARGET" == "hip" ]]; then
+if (( TILEOFF_SOURCE_COUNT > 0 )) && [[ "$ACCELERATOR_TARGET" == "hip" ]]; then
   [[ -d "$ROCM_PATH" ]] || die "ROCm installation does not exist: $ROCM_PATH"
   if [[ -n "$ROCM_DEVICE_LIB_DIR" && ! -d "$ROCM_DEVICE_LIB_DIR" ]]; then
     die "ROCm device-library directory does not exist: $ROCM_DEVICE_LIB_DIR"
@@ -1977,11 +1977,11 @@ cleanup() {
 }
 trap cleanup EXIT
 
-if ((TILEOFFLOAD_SOURCE_COUNT > 0)); then
+if ((TILEOFF_SOURCE_COUNT > 0)); then
   resolve_flang_intrinsic_modules "${COMPILE_FLAGS[@]}"
 fi
 
-if (( TILEOFFLOAD_SOURCE_COUNT > 0 )) && [[ "$DRY_RUN" != "1" ]]; then
+if (( TILEOFF_SOURCE_COUNT > 0 )) && [[ "$DRY_RUN" != "1" ]]; then
   write_toolchain_manifest "$WORKDIR/toolchain.txt"
 fi
 
@@ -2004,8 +2004,8 @@ compile_tileoff_source() {
   local effective_num_warps count
   local data_only=0
   local BACKEND="$BACKEND"
-  local CUDA_TILE_TRANSLATE="${TILEOFFLOAD_CUDA_TILE_TRANSLATE:-cuda-tile-translate}"
-  local TILEIRAS="${TILEOFFLOAD_TILEIRAS:-tileiras}"
+  local CUDA_TILE_TRANSLATE="${TILEOFF_CUDA_TILE_TRANSLATE:-cuda-tile-translate}"
+  local TILEIRAS="${TILEOFF_TILEIRAS:-tileiras}"
   if [[ "$BACKEND" == "cuda-tile" ]]; then
     local tile_target_supported=0
 
@@ -2063,7 +2063,7 @@ compile_tileoff_source() {
   maybe_stop fir
 
   log "  [3/10] Run TileOffload pipeline"
-  run env "TILEOFFLOAD_KERNEL_BUNDLE_KEY=$source_hash" "$FIROPT" \
+  run env "TILEOFF_KERNEL_BUNDLE_KEY=$source_hash" "$FIROPT" \
     "--tileoff-pipeline=ttir-output=$ttir json-output=$json \
       emit-fortran-aliases=true \
       launch-abi=$LAUNCH_ABI \
@@ -2085,8 +2085,8 @@ compile_tileoff_source() {
     count="$(kernel_json_count "$json")"
     if (( count == 0 )); then
       if fir_has_tileoff_launch "$fir" || source_has_tileoff_parallel "$source"; then
-        if [[ "${TILEOFFLOAD_ALLOW_EMPTY_KERNELS:-0}" != "1" ]]; then
-          die "no kernels were emitted into $json even though an TileOffload parallel launch was present; set TILEOFFLOAD_ALLOW_EMPTY_KERNELS=1 to override this check"
+        if [[ "${TILEOFF_ALLOW_EMPTY_KERNELS:-0}" != "1" ]]; then
+          die "no kernels were emitted into $json even though an TileOffload parallel launch was present; set TILEOFF_ALLOW_EMPTY_KERNELS=1 to override this check"
         fi
         warn "accepting an empty kernel bundle despite an TileOffload parallel launch"
       fi
@@ -2243,11 +2243,11 @@ compile_tileoff_source() {
       kernel_ttir="$(manifest_get "$manifest" "$ki" ttir)"
       kernel_ttgir="$(manifest_get "$manifest" "$ki" ttgir)"
       if [[ "$ACCELERATOR_TARGET" == "hip" &&
-            -n "${TILEOFFLOAD_HIP_TTIR_TO_TTGIR_PASSES:-}" ]]; then
-        mapfile -t TTIR_TO_TTGIR_PASSES < <(split_pass_pipeline "$TILEOFFLOAD_HIP_TTIR_TO_TTGIR_PASSES")
+            -n "${TILEOFF_HIP_TTIR_TO_TTGIR_PASSES:-}" ]]; then
+        mapfile -t TTIR_TO_TTGIR_PASSES < <(split_pass_pipeline "$TILEOFF_HIP_TTIR_TO_TTGIR_PASSES")
         run "$TRITON_OPT" "$kernel_ttir" "${TTIR_TO_TTGIR_PASSES[@]}" -o "$kernel_ttgir"
-      elif [[ -n "${TILEOFFLOAD_TTIR_TO_TTGIR_PASSES:-}" ]]; then
-        mapfile -t TTIR_TO_TTGIR_PASSES < <(split_pass_pipeline "$TILEOFFLOAD_TTIR_TO_TTGIR_PASSES")
+      elif [[ -n "${TILEOFF_TTIR_TO_TTGIR_PASSES:-}" ]]; then
+        mapfile -t TTIR_TO_TTGIR_PASSES < <(split_pass_pipeline "$TILEOFF_TTIR_TO_TTGIR_PASSES")
         run "$TRITON_OPT" "$kernel_ttir" "${TTIR_TO_TTGIR_PASSES[@]}" -o "$kernel_ttgir"
       elif [[ "$ACCELERATOR_TARGET" == "hip" ]]; then
         run "$TRITON_OPT" "$kernel_ttir" \
@@ -2276,11 +2276,11 @@ compile_tileoff_source() {
       kernel_ttgir="$(manifest_get "$manifest" "$ki" ttgir)"
       kernel_llvm_mlir="$(manifest_get "$manifest" "$ki" llvm_mlir)"
       if [[ "$ACCELERATOR_TARGET" == "hip" &&
-            -n "${TILEOFFLOAD_HIP_TTGIR_TO_LLVM_PASSES:-}" ]]; then
-        mapfile -t TTGIR_TO_LLVM_PASSES < <(split_pass_pipeline "$TILEOFFLOAD_HIP_TTGIR_TO_LLVM_PASSES")
+            -n "${TILEOFF_HIP_TTGIR_TO_LLVM_PASSES:-}" ]]; then
+        mapfile -t TTGIR_TO_LLVM_PASSES < <(split_pass_pipeline "$TILEOFF_HIP_TTGIR_TO_LLVM_PASSES")
         run "$TRITON_OPT" "$kernel_ttgir" "${TTGIR_TO_LLVM_PASSES[@]}" -o "$kernel_llvm_mlir"
-      elif [[ -n "${TILEOFFLOAD_TTGIR_TO_LLVM_PASSES:-}" ]]; then
-        mapfile -t TTGIR_TO_LLVM_PASSES < <(split_pass_pipeline "$TILEOFFLOAD_TTGIR_TO_LLVM_PASSES")
+      elif [[ -n "${TILEOFF_TTGIR_TO_LLVM_PASSES:-}" ]]; then
+        mapfile -t TTGIR_TO_LLVM_PASSES < <(split_pass_pipeline "$TILEOFF_TTGIR_TO_LLVM_PASSES")
         run "$TRITON_OPT" "$kernel_ttgir" "${TTGIR_TO_LLVM_PASSES[@]}" -o "$kernel_llvm_mlir"
       elif [[ "$ACCELERATOR_TARGET" == "hip" ]]; then
         run "$TRITON_OPT" "$kernel_ttgir" \
@@ -2471,7 +2471,7 @@ fi
 
 FINAL_LINK_ARGS=()
 for item in "${LINK_SEQUENCE[@]}"; do
-  if [[ "$item" =~ ^__TILEOFFLOAD_SOURCE_([0-9]+)__$ ]]; then
+  if [[ "$item" =~ ^__TILEOFF_SOURCE_([0-9]+)__$ ]]; then
     index="${BASH_REMATCH[1]}"
     FINAL_LINK_ARGS+=("${SOURCE_OBJECTS[$index]}")
   else
@@ -2480,19 +2480,19 @@ for item in "${LINK_SEQUENCE[@]}"; do
 done
 
 resolve_nm
-NEEDS_TILEOFFLOAD_RUNTIME="$FORCE_RUNTIME"
-if (( TILEOFFLOAD_SOURCE_COUNT > 0 )); then
-  NEEDS_TILEOFFLOAD_RUNTIME=1
+NEEDS_TILEOFF_RUNTIME="$FORCE_RUNTIME"
+if (( TILEOFF_SOURCE_COUNT > 0 )); then
+  NEEDS_TILEOFF_RUNTIME=1
 fi
 
 for input in "${OTHER_INPUTS[@]}"; do
   if input_needs_tileoff_runtime "$input"; then
-    NEEDS_TILEOFFLOAD_RUNTIME=1
+    NEEDS_TILEOFF_RUNTIME=1
   fi
 done
 
 RUNTIME_LINK_FLAGS=()
-if [[ "$NEEDS_TILEOFFLOAD_RUNTIME" == "1" && "$DISABLE_RUNTIME" != "1" && "$RELOCATABLE_LINK" != "1" ]]; then
+if [[ "$NEEDS_TILEOFF_RUNTIME" == "1" && "$DISABLE_RUNTIME" != "1" && "$RELOCATABLE_LINK" != "1" ]]; then
   [[ -n "${LLVM_BUILD:-}" ]] || die "LLVM_BUILD is required to link the TileOffload runtime"
   case "${ACCELERATOR_TARGET,,}" in
     hip|amd|rocm)
@@ -2518,7 +2518,7 @@ fi
 [[ -n "$OUTPUT" ]] || OUTPUT="a.out"
 
 log "link: ${#SOURCES[@]} source object(s), ${#OTHER_INPUTS[@]} other input(s) -> $OUTPUT"
-if [[ "$NEEDS_TILEOFFLOAD_RUNTIME" == "1" ]]; then
+if [[ "$NEEDS_TILEOFF_RUNTIME" == "1" ]]; then
   log "TileOffload runtime: $([[ "$DISABLE_RUNTIME" == "1" || "$RELOCATABLE_LINK" == "1" ]] && echo deferred || echo enabled)"
 fi
 
@@ -2537,7 +2537,7 @@ log "done"
 log "output: $OUTPUT"
 if [[ "$KEEP" == "1" ]]; then
   log "workdir kept: $WORKDIR"
-  if (( TILEOFFLOAD_SOURCE_COUNT > 0 )); then
+  if (( TILEOFF_SOURCE_COUNT > 0 )); then
     log "toolchain: $WORKDIR/toolchain.txt"
   fi
 fi

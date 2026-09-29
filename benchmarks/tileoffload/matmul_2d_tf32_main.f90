@@ -1,4 +1,4 @@
-program matmul_2d_tileoffload          
+program matmul_2d_tf32_tileoffload
   use bench_utils
   use tileoff_matmul_2d_kernel
   implicit none
@@ -35,22 +35,22 @@ program matmul_2d_tileoffload
 
   c = 0.0
 
-  call matmul_2d_prepare(a, b, c)
+  call matmul_2d_tf32_prepare(a, b, c)
 
-  call matmul_2d_compute(a, b, c)
-  call matmul_2d_compute(a, b, c)
+  call matmul_2d_tf32_compute(a, b, c)
+  call matmul_2d_tf32_compute(a, b, c)
 
   !$tileoff wait
   t0 = wall_time()
 
   do r = 1, reps
-    call matmul_2d_compute(a, b, c)
+    call matmul_2d_tf32_compute(a, b, c)
   end do
 
   !$tileoff wait
   t1 = wall_time()
 
-  call matmul_2d_fetch(c)
+  call matmul_2d_tf32_fetch(c)
 
   errors = 0
 
@@ -74,14 +74,14 @@ program matmul_2d_tileoffload
     end do
   end do
 
-  call matmul_2d_release(a, b, c)
+  call matmul_2d_tf32_release(a, b, c)
 
   elapsed = t1 - t0
 
   ! Interpret final rate as GFLOP/s.
   flops_per_rep = 2.0d0 * real(n, 8) * real(m, 8) * real(k, 8)
 
-  call print_result("tileoff_matmul_2d", n, m, reps, elapsed, flops_per_rep, errors)
+  call print_result("tileoff_matmul_2d_tf32", n, m, reps, elapsed, flops_per_rep, errors)
 
 end program
 

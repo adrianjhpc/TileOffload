@@ -1,4 +1,4 @@
-program vector_add_TileOffload
+program vector_add_tileoffload          
   use bench_utils
   use tileoff_vector_add_kernel
   implicit none

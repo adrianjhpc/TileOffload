@@ -1,4 +1,4 @@
-program axpby_TileOffload
+program axpby_tileoffload          
   use bench_utils
   use tileoff_axpby_kernel
   implicit none

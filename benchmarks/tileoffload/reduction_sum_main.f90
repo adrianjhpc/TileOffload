@@ -1,4 +1,4 @@
-program reduction_sum_TileOffload
+program reduction_sum_tileoffload
   use bench_utils
   use tileoff_reduction_sum_kernel
   implicit none

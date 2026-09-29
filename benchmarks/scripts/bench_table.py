@@ -39,6 +39,7 @@ KNOWN_TARGET_ORDER = [
     "openacc_matrix_add_2d",
 
     "tileoff_matmul_2d",
+    "tileoff_matmul_2d_tf32",
     "cuda_matmul_2d",
     "cuda_cublas_matmul_2d_fp32",
     "cuda_cublas_matmul_2d_tf32",
@@ -49,7 +50,7 @@ KNOWN_TARGET_ORDER = [
 
 
 KNOWN_BACKEND_ORDER = [
-    "TileOffload",
+    "tileoffload",
     "cuda",
     "cuda_cublas",
     "openmp",

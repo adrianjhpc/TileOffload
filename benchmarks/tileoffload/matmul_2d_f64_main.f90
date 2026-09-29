@@ -1,4 +1,4 @@
-program matmul_2d_f64_TileOffload
+program matmul_2d_f64_tileoffload
   use bench_utils
   use tileoff_matmul_2d_f64_kernel
   implicit none

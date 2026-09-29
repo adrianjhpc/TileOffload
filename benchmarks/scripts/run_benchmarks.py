@@ -122,11 +122,11 @@ def choose_exe(path: Path, backend: str):
 
     For TileOffload:
       - prefer .run only if it is not stale;
-      - otherwise use the direct executable and set tileoff_PTX/JSON later.
+      - otherwise use the direct executable and set TILEOFF_PTX/JSON later.
     """
     uses_runner = False
 
-    if backend == "TileOffload":
+    if backend == "tileoffload":
         runner = Path(str(path) + ".run")
         if runner_is_usable(runner):
             return runner, True
@@ -134,7 +134,7 @@ def choose_exe(path: Path, backend: str):
         if runner.exists():
             target = runner_target_path(runner)
             print(
-                f"warning: ignoring stale TileOffload runner {runner}; "
+                f"warning: ignoring stale tileoffload runner {runner}; "
                 f"wrapper target is {target}",
                 flush=True,
             )
@@ -292,93 +292,100 @@ def collect_targets(
     maybe_add(
         targets_1d,
         "vector_add",
-        "TileOffload",
+        "tileoffload",
         "tileoff_vector_add",
-        build / "benchmarks/TileOffload/TileOffload-vector-add/TileOffload-vector-add",
+        build / "benchmarks/tileoffload/tileoffload-vector-add/tileoffload-vector-add",
     )
     maybe_add(
         targets_1d,
         "vector_add_f64",
-        "TileOffload",
+        "tileoffload",
         "tileoff_vector_add_f64",
-        build / "benchmarks/TileOffload/TileOffload-vector-add-f64/TileOffload-vector-add-f64",
+        build / "benchmarks/tileoffload/tileoffload-vector-add-f64/tileoffload-vector-add-f64",
     )
     maybe_add(
         targets_1d,
         "saxpy",
-        "TileOffload",
+        "tileoffload",
         "tileoff_saxpy",
-        build / "benchmarks/TileOffload/TileOffload-saxpy/TileOffload-saxpy",
+        build / "benchmarks/tileoffload/tileoffload-saxpy/tileoffload-saxpy",
     )
     maybe_add(
         targets_1d,
         "daxpy",
-        "TileOffload",
+        "tileoffload",
         "tileoff_daxpy",
-        build / "benchmarks/TileOffload/TileOffload-daxpy/TileOffload-daxpy",
+        build / "benchmarks/tileoffload/tileoffload-daxpy/tileoffload-daxpy",
     )
     maybe_add(
         targets_1d,
         "axpby",
-        "TileOffload",
+        "tileoffload",
         "tileoff_axpby",
-        build / "benchmarks/TileOffload/TileOffload-axpby/TileOffload-axpby",
+        build / "benchmarks/tileoffload/tileoffload-axpby/tileoffload-axpby",
     )
     maybe_add(
         targets_1d,
         "axpby_f64",
-        "TileOffload",
+        "tileoffload",
         "tileoff_axpby_f64",
-        build / "benchmarks/TileOffload/TileOffload-axpby-f64/TileOffload-axpby-f64",
+        build / "benchmarks/tileoffload/tileoffload-axpby-f64/tileoffload-axpby-f64",
     )
     maybe_add(
         targets_2d,
         "matrix_add_2d",
-        "TileOffload",
+        "tileoffload",
         "tileoff_matrix_add_2d",
-        build / "benchmarks/TileOffload/TileOffload-matrix-add-2d/TileOffload-matrix-add-2d",
+        build / "benchmarks/tileoffload/tileoffload-matrix-add-2d/tileoffload-matrix-add-2d",
     )
     maybe_add(
         targets_2d,
         "matrix_add_2d_f64",
-        "TileOffload",
+        "tileoffload",
         "tileoff_matrix_add_2d_f64",
-        build / "benchmarks/TileOffload/TileOffload-matrix-add-2d-f64/TileOffload-matrix-add-2d-f64",
+        build / "benchmarks/tileoffload/tileoffload-matrix-add-2d-f64/tileoffload-matrix-add-2d-f64",
     )
     maybe_add(
         targets_2d,
         "matmul_2d",
-        "TileOffload",
+        "tileoffload",
         "tileoff_matmul_2d",
-        build / "benchmarks/TileOffload/TileOffload-matmul-2d/TileOffload-matmul-2d",
+        build / "benchmarks/tileoffload/tileoffload-matmul-2d/tileoffload-matmul-2d",
+    )
+    maybe_add(
+        targets_2d,
+        "matmul_2d_tf32",
+        "tileoffload",
+        "tileoff_matmul_2d_tf32",
+        build / "benchmarks/tileoffload/tileoffload-matmul-2d-tf32/tileoffload-matmul-2d-tf32",
     )
     maybe_add(
         targets_2d,
         "matmul_2d_f64",
-        "TileOffload",
+        "tileoffload",
         "tileoff_matmul_2d_f64",
-        build / "benchmarks/TileOffload/TileOffload-matmul-2d-f64/TileOffload-matmul-2d-f64",
+        build / "benchmarks/tileoffload/tileoffload-matmul-2d-f64/tileoffload-matmul-2d-f64",
     )
     maybe_add(
         targets_1d,
         "reduction_dot",
-        "TileOffload",
+        "tileoffload",
         "tileoff_reduction_dot",
-        build / "benchmarks/TileOffload/TileOffload-reduction-dot/TileOffload-reduction-dot",
+        build / "benchmarks/tileoffload/tileoffload-reduction-dot/tileoffload-reduction-dot",
     )
     maybe_add(
         targets_1d,
         "reduction_sum",
-        "TileOffload",
+        "tileoffload",
         "tileoff_reduction_sum",
-        build / "benchmarks/TileOffload/TileOffload-reduction-sum/TileOffload-reduction-sum",
+        build / "benchmarks/tileoffload/tileoffload-reduction-sum/tileoffload-reduction-sum",
     )
     maybe_add(
         targets_1d,
         "reduction_dot_f64",
-        "TileOffload",
+        "tileoffload",
         "tileoff_reduction_dot_f64",
-        build / "benchmarks/TileOffload/TileOffload-reduction-dot-f64/TileOffload-reduction-dot-f64",
+        build / "benchmarks/tileoffload/tileoffload-reduction-dot-f64/tileoffload-reduction-dot-f64",
     )
 
 
@@ -786,7 +793,7 @@ def env_for_target(base_env, target):
     env["LC_ALL"] = "C"
     env["LANG"] = "C"
 
-    if target["backend"] == "TileOffload" and not target.get("uses_runner", False):
+    if target["backend"] == "tileoffload" and not target.get("uses_runner", False):
         side = find_tileoff_side_files(target["direct_exe"])
 
         json = side.get("json")
@@ -794,14 +801,14 @@ def env_for_target(base_env, target):
         ptx_dir = side.get("ptx_dir")
 
         if json and ptx_dir:
-            env.setdefault("tileoff_PTX_DIR", str(ptx_dir.resolve()))
-            env.setdefault("tileoff_KERNELS_JSON", str(json.resolve()))
+            env.setdefault("TILEOFF_PTX_DIR", str(ptx_dir.resolve()))
+            env.setdefault("TILEOFF_KERNELS_JSON", str(json.resolve()))
         elif json and ptx:
-            env.setdefault("tileoff_PTX", str(ptx.resolve()))
-            env.setdefault("tileoff_KERNELS_JSON", str(json.resolve()))
+            env.setdefault("TILEOFF_PTX", str(ptx.resolve()))
+            env.setdefault("TILEOFF_KERNELS_JSON", str(json.resolve()))
         else:
             print(
-                f"warning: could not find local TileOffload PTX/JSON side files "
+                f"warning: could not find local tileoffload PTX/JSON side files "
                 f"for {target['direct_exe']}; relying on embedded payload or "
                 f"default runtime lookup",
                 flush=True,
@@ -860,7 +867,7 @@ def main():
         default=[],
         help=(
             "Run only this backend. May be repeated. "
-            "Examples: TileOffload, cuda, coda_cublas, openmp, openmp_gpu, openacc."
+            "Examples: tileoffload, cuda, coda_cublas, openmp, openmp_gpu, openacc."
         ),
     )
     parser.add_argument(
@@ -873,8 +880,8 @@ def main():
         ),
     )
 
-    parser.add_argument("--TileOffload-profile", action="store_true")
-    parser.add_argument("--TileOffload-debug", action="store_true")
+    parser.add_argument("--tileoffload-profile", action="store_true")
+    parser.add_argument("--tileoffload-debug", action="store_true")
     parser.add_argument("--cuda-launch-blocking", action="store_true")
 
     parser.add_argument(
@@ -973,11 +980,11 @@ def main():
     base_env["LC_ALL"] = "C"
     base_env["LANG"] = "C"
 
-    if args.tileoff_profile:
-        base_env["tileoff_PROFILE"] = "1"
+    if args.tileoffload_profile:
+        base_env["TILEOFF_PROFILE"] = "1"
 
-    if args.tileoff_debug:
-        base_env["tileoff_DEBUG"] = "1"
+    if args.tileoffload_debug:
+        base_env["TILEOFF_DEBUG"] = "1"
 
     if args.cuda_launch_blocking:
         base_env["CUDA_LAUNCH_BLOCKING"] = "1"

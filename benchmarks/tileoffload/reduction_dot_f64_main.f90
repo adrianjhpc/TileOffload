@@ -1,4 +1,4 @@
-program reduction_dot_f64_TileOffload
+program reduction_dot_f64_tileoffload          
   use bench_utils
   use tileoff_reduction_dot_f64_kernel
   implicit none

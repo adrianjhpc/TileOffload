@@ -1,4 +1,4 @@
-program axpby_f64_TileOffload
+program axpby_f64_tileoffload          
   use bench_utils
   use tileoff_axpby_f64_kernel
   implicit none

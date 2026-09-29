@@ -1,4 +1,4 @@
-program matrix_add_2d_f64_TileOffload
+program matrix_add_2d_f64_tileoffload          
   use bench_utils
   use tileoff_matrix_add_2d_f64_kernel
   implicit none

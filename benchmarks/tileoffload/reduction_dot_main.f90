@@ -1,4 +1,4 @@
-program reduction_dot_TileOffload
+program reduction_dot_tileoffload          
   use bench_utils
   use tileoff_reduction_dot_kernel
   implicit none

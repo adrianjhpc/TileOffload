@@ -1,4 +1,4 @@
-program daxpy_TileOffload
+program daxpy_tileoffload          
   use bench_utils
   use tileoff_daxpy_kernel
   implicit none
