@@ -1,15 +1,19 @@
 # TileOffload
 
-TileOffload is an experimental directive-based programming model for moving
+TileOffload is an directive-based programming model for moving
 Fortran loop kernels to GPUs and other accelerators. Its source model is
 deliberately similar to OpenACC and OpenMP offload, while its compiler path is
 built directly into LLVM Flang.
 
-The implemented backend uses [Triton](https://triton-lang.org/) to
-generate code for NVIDIA GPUs through CUDA and AMD GPUs through HIP/ROCm.
+TileOffload lowers recognised Fortran computations to tile operations. The
+Triton backend generates NVIDIA CUDA and AMD HIP/ROCm device code. An additional
+experimental **direct CUDA Tile backend** emits CUDA Tile IR and cubin images
+without routing those kernels through Triton. Unsupported CUDA Tile kernels
+can fall back to Triton within the same source compilation.
+
 Kernel recognition, launch planning, metadata, and the host runtime interface
-are backend-neutral so that other code-generation backends and accelerator
-targets can be added without changing the Fortran programming model.
+are shared across backends. Backend support is deliberately checked per kernel;
+not every construct supported by Triton is available through CUDA Tile.
 
 The TileOffload compiler changes currently live on the
 [TileOffload branch of the LLVM fork](https://github.com/adrianjhpc/llvm-project/tree/TileOffload).
@@ -23,6 +27,7 @@ The compiler driver lives in a separate repository.
 ## Contents
 
 - [Current capabilities](#current-capabilities)
+- [Implementation and validation status](#implementation-and-validation-status)
 - [Compilation pipeline](#compilation-pipeline)
 - [GPU targets](#gpu-targets)
 - [Building the toolchain](#building-the-toolchain)
@@ -37,6 +42,7 @@ The compiler driver lives in a separate repository.
 - [Compilation and linking](#compilation-and-linking)
 - [Compiler-driver reference](#compiler-driver-reference)
 - [Runtime configuration](#runtime-configuration)
+- [Runtime device selection and MPI](#runtime-device-selection-and-mpi)
 - [Compiler and runtime architecture](#compiler-and-runtime-architecture)
 - [Backend artifact contract](#backend-artifact-contract)
 - [Performance tuning and profiling](#performance-tuning-and-profiling)
@@ -51,7 +57,7 @@ TileOffload currently provides:
 
 - `parallel` lowering for recognised one- and two-dimensional Fortran loops;
 - arbitrary runtime loop lower and upper bounds for elementwise, stencil, and
-  reduction kernels, with a unit loop step;
+  reduction kernels, including recognised nonzero constant and runtime steps;
 - descriptor-based host launches through ABI v3 by default, with explicit v2
   compatibility and variadic array/scalar bindings;
 - one or more output assignments in a recognised loop;
@@ -61,7 +67,7 @@ TileOffload currently provides:
 - two-dimensional stencils with halo offsets, mixed-rank coordinate arrays,
   conditional affine indices, and supported fixed nested-loop expansions;
 - specialised single- and double-precision two-dimensional matrix
-  multiplication;
+  multiplication with arbitrary recoverable loop bounds and supported signed steps;
 - one-dimensional sum, dot-product, product, minimum, and maximum reductions;
 - fused two-dimensional multi-result reductions using one common reduction
   operator;
@@ -80,11 +86,43 @@ TileOffload currently provides:
   when their storage is contiguous;
 - multiple separately compiled embedded TileOffload bundles in one executable;
 - initial end-to-end NVIDIA CUDA and AMD HIP/ROCm target support;
-- embedded PTX images for CUDA and HSACO images for HIP;
+- embedded PTX or CUDA Tile cubin images for CUDA and HSACO images for HIP;
+- runtime device enumeration and selection through the `TileOffload` module;
+- precision-aware CUDA matmul pipeline selection and explicit packed-A recognition;
 - per-device and per-accelerator-context runtime state; and
-- a backend-neutral kernel plan and artifact contract, with Triton as the only
-  complete code-generation backend at present and CUDA and HIP as its
-  supported accelerator targets.
+- a backend-neutral kernel plan and artifact contract, with Triton as the
+  broadest backend and a narrower direct CUDA Tile implementation.
+
+Compiler-generated TF32 A packing is available as an **experimental opt-in
+patch**, described below. Its CPU checks pass; full compiler/toolchain and GPU
+validation have not yet been reported for that patch. Do not confuse it with
+the already measured explicit packing benchmarks.
+
+## Implementation and validation status
+
+| Area | Current status |
+| --- | --- |
+| CUDA/Triton kernels, residency, reductions, v3 launches | Exercised by the benchmark suite and CloverLeaf; correctness must still be checked for each compiler/target configuration. |
+| Arbitrary bounds and constant non-unit/negative steps | Implemented; bounds, tails, empty ranges and untouched-output tests have passed in development. |
+| Runtime step values | Implemented in the supplied compiler/runtime sources; steps must be launch-invariant, nonzero signed 32-bit values. Backend restrictions still apply. |
+| Direct CUDA Tile | Implemented for a limited pointwise and rank-1 reduction subset; BabelStream has run through this path. Not a replacement for all Triton lowering. |
+| HIP/ROCm | End-to-end implementation is present; the NVIDIA measurements here do not validate AMD correctness or performance. |
+| Runtime device selection | Public device-count/get/set interfaces and per-context state are implemented. This is not automatic MPI distribution or data migration. |
+| Explicit packed-A matmul | Recognises AP(k,i) times B(k,j); measured pack-plus-matmul tests produced correct results and demonstrated potential benefits. |
+| Automatic A packing | New opt-in compiler/runtime/driver patch; CPU mock and emitter checks pass. Full Flang/Triton build and GPU execution remain to be validated. |
+
+The most recent pre-automatic-packing benchmark snapshot reported **zero
+nonzero-error rows across 80 two-dimensional and 112 one-dimensional results**.
+These are results for the measured configurations, not a guarantee for every
+supported type, target, backend or loop shape. A tuned long CloverLeaf run was
+reported at approximately 192 s for TileOffload, 199 s for CUDA and 201 s for
+OpenACC; retain the workload and toolchain settings when reproducing or citing
+that comparison.
+
+The supplied sources and patch packages may be ahead of an installed build.
+Check that a feature's compiler, driver and runtime changes are all applied;
+this README does not assert that every development patch has been merged or
+released.
 
 ## Compilation pipeline
 
@@ -93,14 +131,23 @@ The implemented end-to-end paths are:
 ```text
 Fortran + !$tileoff
   -> Flang parse tree and semantics
-  -> FIR with tileoffload.launch and TileOffload data operations
+  -> FIR with TileOffload.launch and data operations
   -> kernel recognition and backend-neutral planning
-  -> Triton TTIR -> target-specific TTGIR -> LLVM MLIR -> LLVM IR
-       CUDA: NVPTX + CUDA libdevice -> PTX
-       HIP:  AMDGPU + OCML/OCKL/control bitcode -> object -> HSACO
+  -> per-kernel backend selection
+       Triton:
+         TTIR -> TTGIR -> LLVM MLIR -> LLVM IR
+         CUDA: NVPTX/libdevice -> PTX
+         HIP:  AMDGPU/ROCm device libraries -> object -> HSACO
+       Direct CUDA Tile:
+         CUDA Tile IR -> cuda-tile-translate -> Tile IR bytecode
+         -> tileiras -> cubin
   -> embedded typed device-image/JSON bundle
-  -> host object + matching TileOffload CUDA Driver API or HIP runtime
+  -> host object + matching CUDA Driver API or HIP runtime
 ```
+
+A CUDA bundle can contain both Triton PTX and CUDA Tile cubin kernels. Fallback
+is a compile-time backend choice, not a silent retry of an incorrectly running
+GPU kernel. Host ABI v3 is independent of that choice.
 
 The recogniser is intentionally fail-closed. A `parallel` region is compiled
 only when every relevant operation can be represented in the selected kernel
@@ -116,7 +163,8 @@ runtime.
 
 | Target | Architecture example | Subgroup width | Embedded image | Runtime library |
 | --- | --- | --- | --- | --- |
-| `cuda` | `sm_90a` | `32` | PTX | `FortranTileOffloadRuntime` + CUDA Driver API |
+| `cuda` / Triton | `sm_90a` | `32` | PTX | `FortranTileOffloadRuntime` + CUDA Driver API |
+| `cuda` / CUDA Tile | Architecture accepted by installed `tileiras` | Backend-managed | cubin | `FortranTileOffloadRuntime` + CUDA Driver API |
 | `hip` | `gfx90a`, `gfx942` | `64` for `gfx9*` by default; otherwise `32` | HSACO | `FortranTileOffloadRuntimeHIP` + `libamdhip64` |
 
 CUDA remains the default target for compatibility. Select AMD explicitly:
@@ -138,8 +186,8 @@ accelerator platform. The final link invocation must use the same
 
 ### Required tools
 
-The driver needs an TileOffload-enabled LLVM/Flang build and a matching Triton/LLVM
-lowering toolchain:
+The Triton path needs a TileOffload-enabled LLVM/Flang build and a matching
+Triton/LLVM lowering toolchain:
 
 ```sh
 export LLVM_BUILD=/path/to/llvm-project/build
@@ -173,17 +221,19 @@ Configure one or both runtime targets:
 cmake -S llvm -B build -G Ninja \
   -DLLVM_ENABLE_PROJECTS="clang;mlir;flang" \
   -DFLANG_TILEOFF_RUNTIME=ON \
-  -DFLANG_TILEOFF_RUNTIME_BACKEND=BOTH
+  -DFLANG_TILEOFFLOAD_RUNTIME_BACKEND=BOTH
 ```
 
-`FLANG_TILEOFF_RUNTIME_BACKEND` accepts `CUDA`, `HIP`, or `BOTH` and defaults to
+`FLANG_TILEOFFLOAD_RUNTIME_BACKEND` accepts `CUDA`, `HIP`, or `BOTH` and defaults to
 `CUDA`. A HIP or `BOTH` build must find `hip/hip_runtime_api.h` and
 `libamdhip64`; set `ROCM_PATH`, `HIP_PATH`, `HIP_DRIVER_INCLUDE_DIR`, or
 `HIP_DRIVER_LIBRARY` when they are outside normal locations. A CUDA or `BOTH`
 build must find the CUDA driver headers and library.
 
-`FLANG_TILEOFFLOAD=ON` remains a compatibility spelling when
-`FLANG_TILEOFF_RUNTIME` is not set explicitly.
+The top-level runtime-enable option can vary between fork revisions; retain
+the enable option used by your working checkout. The current runtime CMake
+file uses `FLANG_TILEOFFLOAD_RUNTIME_BACKEND` for backend selection. Do not
+assume similarly named legacy cache entries affect the current build.
 
 Typical rebuild targets are:
 
@@ -207,13 +257,41 @@ code. Changing the default host launch ABI also requires recompiling the host
 launch sites. Rebuild and relink the matching runtime when its implementation
 changes.
 
-NVTX instrumentation is optional and disabled by default in the revised runtime.
-A normal runtime build does not require `nvtx3/nvtx3.hpp`. For an instrumented
-build, define `TILEOFF_ENABLE_NVTX=1` on the runtime CMake target, add the directory
-containing `nvtx3/` to its include paths, and link `${CMAKE_DL_LIBS}` where needed.
-Set include paths in CMake and regenerate the Ninja build; do not edit generated
-`build.ninja` rules. Runtime targets also require the platform thread dependency
-(for example, CMake `Threads::Threads`).
+NVTX instrumentation is optional and disabled by default. A normal runtime
+build does not require `nvtx3/nvtx3.hpp`. For the current runtime CMake file:
+
+```sh
+cmake -S llvm -B build \
+  -DFLANG_TILEOFFLOAD_ENABLE_NVTX=ON \
+  -DTILEOFFLOAD_NVTX_INCLUDE_DIR=/path/containing/nvtx3
+```
+
+CMake defines `TILEOFFLOAD_ENABLE_NVTX` on the runtime target and adds the
+include/link requirements. Regenerate Ninja rules instead of editing
+`build.ninja` directly.
+
+### Direct CUDA Tile tools
+
+For `--tileoff-backend cuda-tile`, also provide:
+
+```sh
+export TILEOFF_CUDA_TILE_TRANSLATE=/path/to/cuda-tile-translate
+export TILEOFF_TILEIRAS=/path/to/tileiras
+"$TILEOFF_TILEIRAS" --version
+"$TILEOFF_TILEIRAS" --help
+```
+
+The defaults are `cuda-tile-translate` and `tileiras` on `PATH`. The supplied
+driver requests Tile IR bytecode version `13.1`; translator, assembler and
+installed driver must support the selected path. Check the assembler's actual
+`--gpu-name` list. A newer compatibility document does not add architectures
+to an older local assembler, and `sm_90a` is not interchangeable with `sm_90`
+for every tool. Do not silently compile for `sm_80` to bypass an unsupported
+architecture diagnostic.
+
+Triton tools remain necessary when any kernel falls back to Triton. Pure CUDA
+Tile kernels use the direct path, but still need Flang and host compilation
+and linking tools.
 
 ## Quick start
 
@@ -290,6 +368,21 @@ on the final link so the driver selects `FortranTileOffloadRuntimeHIP`.
 
 ## Programming model
 
+### Tile-valued expressions
+
+TileOffload starts from a loop nest but represents supported expressions across
+a logical tile: loads, arithmetic, predicates and stores operate on collections
+of iteration values. This exposes tile layouts, data reuse, dot operations and
+software-pipeline opportunities to the backend.
+
+CUDA exposes thread/block programming directly. OpenMP and OpenACC primarily
+express iteration-space distribution and data placement through directives;
+their compilers can also vectorise, tile and pipeline computations. The
+TileOffload distinction is its explicit tile-expression lowering strategy,
+not a claim that other models execute expressions serially or cannot perform
+those optimisations. Cross-iteration dependencies are not made safe merely by
+using a tile.
+
 ### Parallel loops
 
 `!$tileoff parallel` applies to the immediately following `do` construct. There
@@ -316,20 +409,35 @@ end do
 
 ### Loop requirements
 
-The general elementwise, stencil, and reduction recognisers require:
+Recognised kernels require a recoverable lower bound, upper bound and step,
+one logical loop for rank one or a supported nest for rank two, and provable
+array accesses. Loop bounds need not start at one, including matmul's M/N/K
+loops. Array declaration bounds are tracked independently of loop bounds.
 
-- a constant loop step of `1`;
-- a recoverable lower bound and trip count;
-- one top-level loop for a rank-one kernel;
-- one outer and one inner logical loop for a rank-two kernel; and
-- array subscripts that the recogniser can prove are derived safely from the
-  logical induction variables and supported scalar indices.
+Constant steps may be positive or negative and non-unit. The runtime-step
+implementation also accepts **launch-invariant signed 32-bit integer steps**:
 
-Lower and upper bounds may be arbitrary runtime integer expressions. Empty
-ranges are represented by a zero trip count.
+```fortran
+integer :: lower, upper, stride, i
+! stride is computed on the host and must be nonzero.
+!$tileoff parallel tile(256)
+do i = lower, upper, stride
+  c(i) = a(i) + b(i)
+end do
+```
 
-Matrix multiplication remains more restrictive: all three canonical loop
-lower bounds must currently be the constant `1`.
+Logical lane `q` maps to Fortran index `lower + q*stride`. Trip counts and
+masks must therefore be based on iteration ordinals, not a raw `upper-lower`
+range. A step whose sign cannot reach the bound produces an empty iteration
+space. A constant zero step is rejected; a runtime zero step is diagnosed
+before launch. Runtime steps depending on an offloaded induction variable or
+on values computed inside the kernel are not supported.
+
+This is not general support for arbitrary loop-carried dependencies, ragged
+nests, noncontiguous host array sections or post-loop induction-variable use.
+The recogniser must still prove the complete kernel safe. CUDA Tile currently
+requires unit steps and can fall back to Triton for other supported loops.
+Automatic A packing also retains a unit-step restriction.
 
 ### Logical tile versus hardware block size
 
@@ -343,7 +451,8 @@ request remains one warp unless overridden; eight warps is a tuning choice, not
 a new global default. Check the driver's `effective warps` message and generated
 JSON after rebuilding.
 
-The hardware block size comes from the selected schedule:
+For the Triton CUDA path, the hardware block size comes from the selected
+schedule:
 
 ```text
 threads_per_cta = num_warps * threads_per_warp
@@ -354,7 +463,11 @@ with one warp therefore means that 32 CUDA threads cooperate to process 1024
 logical elements. HIP accepts subgroup widths of `32` or `64`; the driver
 defaults `gfx9*` architectures to wave64 and later architectures to wave32.
 
-Default logical tiles are:
+CUDA Tile manages its execution mapping separately. Triton warp settings and
+`effective warps` logging do not by themselves establish CUDA Tile hardware
+occupancy or thread count.
+
+Default logical tiles in the current recogniser are:
 
 | Kernel | Default logical tile |
 | --- | --- |
@@ -397,7 +510,8 @@ end do
 | `no_copyback` | Do not automatically copy arrays written by this launch back to the host. Keep their results in cached device storage. |
 
 `pack` currently names simple variables, not arbitrary designators or array
-sections. Data directives have broader designator support.
+sections. Data directives have broader designator support. **This placement
+clause is not a matrix transpose or the automatic matmul A-packing optimisation.**
 
 ### Data and synchronization directives
 
@@ -586,7 +700,7 @@ before its next device consumer.
 
 ### Synchronization
 
-The runtime owns one nonblocking CUDA or HIP stream and one completion event
+The runtime owns one CUDA or HIP stream and one completion event
 per accelerator context. Work submitted through the same context is ordered in
 that stream.
 
@@ -689,8 +803,11 @@ do j = 1, n
 end do
 ```
 
-`real(4)` and `real(8)` matrices are supported. The lower bounds of all three
-loops must currently be `1`.
+`real(4)` and `real(8)` matrices are supported. All three canonical loops may
+have arbitrary recoverable lower bounds and supported nonzero signed steps.
+Physical array bounds/leading dimensions remain independent of those loop
+coordinates. Empty M/N ranges perform no stores; an empty K reduction in this
+zero-initialised pattern writes zero to the selected C elements.
 
 FP32 matmul uses `ieee` input precision by default. Masked matmul inputs are
 zero-padded so partial tiles do not contribute undefined values. To opt into
@@ -724,6 +841,142 @@ tileoffload-flang --tileoff-f64-matmul-strategy dot ...
 
 Performance and toolchain compatibility are GPU- and Triton-version
 dependent. Validate numerical results and benchmark on the target system.
+
+### Direct CUDA Tile coverage
+
+Select it explicitly:
+
+```sh
+tileoffload-flang --tileoff-target cuda --tileoff-backend cuda-tile \
+  --tileoff-gpu-arch ARCH -O3 -c kernels.f90
+```
+
+Use an `ARCH` supported by both the device and installed `tileiras`. The current
+emitter supports these restricted forms:
+
+| Pattern | Direct CUDA Tile constraints |
+| --- | --- |
+| Pointwise rank-1/rank-2 | Homogeneous f32/f64, unit steps, one output, supported array/scalar loads and finite constants with addition, subtraction, multiplication or squaring. |
+| Rank-1 sum, dot, min, max | f32/f64, unit step, supported plain array inputs, power-of-two reduction tile from 2 through 1024, with a generated reduction stage. |
+| Pointwise tile shape | Power-of-two dimensions, at most 1024 total elements. |
+| Other recognised kernels | Triton fallback when enabled; otherwise a diagnostic. |
+
+This is not blanket support for every intrinsic, conversion, multi-output
+expression, stencil or reduction. The backend's `querySupport` determines
+eligibility. Matmul and automatic A packing currently use Triton.
+
+Confirm the backend in the build log and per-kernel JSON:
+
+```text
+selected backend: cuda-tile (device IR=cuda-tile-ir, image=cubin, fallback=false)
+CUDA Tile: tileoff_kernel_... -> cubin
+```
+
+`selected backend: mixed` means some kernels use Triton. To require all kernels
+to compile directly, add `--tileoff-no-backend-fallback`. Generic log headings
+such as “Lower Triton kernels” may still appear when there are no Triton kernels
+to process; they are not evidence of fallback by themselves.
+
+### Matmul pipeline policy
+
+`TILEOFF_MATMUL_PIPELINE` is a **build-time** driver control, separate from
+runtime async execution:
+
+| Value | CUDA matmul lowering |
+| --- | --- |
+| `0` | Disable the optional software-pipeline pass sequence. |
+| `1` | Request that sequence using the configured stage count. |
+| `auto` | Current driver default. On SM90, use baseline lowering for IEEE FP32 and request three stages for FP64 dot and TF32. Other paths retain baseline unless explicitly selected. |
+
+The driver also checks for dot operations: FP64 reduce/FMA strategies do not
+become pipelined dot kernels simply by setting a stage count. One effective
+stage selects baseline lowering. `TILEOFF_MATMUL_F64_PIPELINE_STAGES` and
+`TILEOFF_MATMUL_TF32_PIPELINE_STAGES` override the corresponding auto choices.
+These are policies informed by the measured H100 cases, not universal optimum
+settings. The current experimental driver pipeline is limited to SM80–SM90;
+check the driver before selecting it for other architectures.
+
+```sh
+TILEOFF_MATMUL_PIPELINE=auto tileoffload-flang \
+  --tileoff-gpu-arch sm_90a --tileoff-num-warps 4 \
+  --tileoff-num-stages 3 -O3 -c matmul_kernel.f90
+```
+
+Check `CUDA matmul policy:` in the log for precision class, configured stages
+and effective stages. Changing a runtime environment variable after compilation
+does not regenerate the pipeline. A `-DTILEOFF_NUM_WARPS=4` or similar Fortran
+preprocessor definition does not select the driver warp count; use
+`--tileoff-num-warps` or the build-system setting that passes that option.
+
+The SM90a TF32 correctness issue observed during development was resolved in
+the revised lowering. Retain the required fencing/pipeline pass order and test
+both full and partial tiles when changing it. Large structured mismatches are
+not an acceptable consequence of TF32 rounding.
+
+### Explicit packed-A matmul
+
+The Triton recogniser also accepts the product `ap(p,i)*b(p,j)` (and the reversed
+multiply operands) for a matmul whose A input is already transposed into
+AP(K,M). Physical descriptor dimensions are preserved; this is a storage-layout
+choice, not a change to the mathematical multiplication. Users managing this
+layout explicitly must populate AP and keep it current themselves.
+
+`TILEOFF_MATMUL_ALIGNED_LOADS=1` enables the experimental guarded alignment
+specialisation at build time. The guard checks relevant alignment/layout
+conditions before applying load hints; the general path remains available.
+Do not substitute unconditional contiguity or divisibility assertions for
+those checks.
+
+### Automatic A packing — experimental patch
+
+The latest development patch removes the need for a user-written pack loop
+for eligible **CUDA/Triton TF32 matmul with constant unit steps**. It emits:
+
+1. the original matmul for fallback and baseline comparison;
+2. a tiled A-packing kernel; and
+3. a matmul consuming AP(Kpad,M), with Kpad rounded up to 16 elements.
+
+B/C layouts and requested numerical precision are unchanged. Packing runs
+before every selected matmul on the same stream. Only context-local scratch
+capacity is cached; packed contents are never assumed current across calls.
+The driver records the exact shared-memory requirements of the new kernels.
+The compiler, runtime and driver patches must be used together.
+
+**Status:** patch application checks, runtime mock tests, emitter-fragment
+compilation and driver metadata checks pass. Full LLVM/Flang compilation,
+real Triton lowering and GPU execution have not yet been validated for this
+patch. Candidate generation is opt-in, not a new global default.
+
+```sh
+# Build-time: emit candidates. Use the updated compiler, runtime and driver.
+TILEOFF_MATMUL_PACK_A=auto TILEOFF_MATMUL_PIPELINE=auto \
+  cmake --build build --clean-first --target tileoffload-matmul-2d-tf32
+
+# Runtime: compare the two policies using the SAME candidate-enabled binary.
+exe=build/benchmarks/tileoffload/tileoffload-matmul-2d-tf32/tileoffload-matmul-2d-tf32
+TILEOFF_ASYNC_RESIDENT=1 TILEOFF_MATMUL_PACK_A=0 "$exe" 1000 1000 100
+TILEOFF_ASYNC_RESIDENT=1 TILEOFF_MATMUL_PACK_A=auto "$exe" 1000 1000 100
+```
+
+At build time, `auto` or `1` emits eligible candidates; unset/`0` does not.
+For a candidate-enabled binary, runtime policy is:
+
+| Policy | Behavior |
+| --- | --- |
+| `0` | Original matmul only. |
+| `auto` or unset | Pack supported shapes when M, N and K are all at least 512. |
+| `1` | Force packing for supported nonempty shapes, retaining safety checks. |
+
+The threshold is provisional. Unsupported layouts, overlapping host allocation
+ranges and scratch allocation failure fall back to the original path. Extra
+scratch is `4*M*round_up(K,16)` bytes per context. This initial implementation
+does not cover IEEE FP32, FP64, TF32x3, cuTile, HIP or non-unit/runtime steps.
+Setting the runtime variable cannot add missing kernels to an old binary.
+
+Use `TILEOFF_DEBUG=1` once to confirm an `auto-pack A kernel=...` message; disable
+debug output for timings. Run the patch package's `tests/run_gpu.sh` first.
+Earlier manually packed results demonstrate potential, not a measured speedup
+for this new automatic implementation.
 
 ## Expressions and scalar values
 
@@ -915,13 +1168,13 @@ would otherwise leave stale identity and size information.
 
 ### Driver pipeline
 
-For an TileOffload source, `tileoffload-flang` performs:
+For a TileOffload source, `tileoffload-flang` performs:
 
 1. a syntax-only Flang invocation to generate module files;
 2. FIR emission;
-3. the `tileoffload-pipeline`, producing host FIR, device IR, and JSON;
+3. the `tileoff-pipeline`, producing host FIR, device IR, and JSON;
 4. per-kernel device-IR splitting;
-5. TTIR-to-TritonGPU lowering;
+5. per-backend lowering (CUDA Tile IR to bytecode/cubin, or TTIR to TritonGPU);
 6. TritonGPU-to-LLVM-MLIR lowering;
 7. LLVM-MLIR-to-LLVM-IR translation;
 8. target-specific device-library linking and image generation:
@@ -933,7 +1186,7 @@ For an TileOffload source, `tileoffload-flang` performs:
 
 The result of `-c` is a conventional relocatable object containing host code,
 the embedded device bundle, metadata, and its registration constructor. No
-sidecar PTX, HSACO, or JSON files are required at run time.
+sidecar PTX, cubin, HSACO, or JSON files are required at run time.
 
 ### Data-only TileOffload sources
 
@@ -943,7 +1196,7 @@ lowering, detects that the generated kernel list is empty, skips device code
 generation and embedding, and emits a host-only TileOffload object.
 
 `TILEOFF_ALLOW_EMPTY_KERNELS=1` is not required for this case. It is only an
-escape hatch when a source contains an TileOffload `parallel` launch but the pipeline
+escape hatch when a source contains a TileOffload `parallel` launch but the pipeline
 unexpectedly emits no kernel; the default is to diagnose that inconsistency.
 
 ### Ordinary Fortran sources
@@ -963,7 +1216,7 @@ IDs remain disjoint across separately compiled inputs, while direct
 The runtime validates bundle registration and diagnoses kernel identity/name
 collisions rather than silently choosing one definition.
 
-tileoffload-host objects also use normal Flang external procedure ABI names when
+TileOffload host objects also use normal Flang external procedure ABI names when
 calling procedures defined in ordinary Flang objects. Top-level TileOffload
 definitions expose the corresponding trailing-underscore compatibility entry
 point, allowing mixed TileOffload/plain object links.
@@ -1023,16 +1276,16 @@ Flags are routed to the relevant frontend, host-codegen, or final-link stage.
 | `--tileoff-dry-run` | Print commands without executing them. |
 | `--tileoff-stop-after STAGE` | Stop one TileOffload source after an internal stage. |
 
-Compatibility aliases without the `tileoffload-` prefix are accepted for schedule,
+Compatibility aliases without the `tileoff-` prefix are accepted for schedule,
 work-directory, verbosity, and stop controls.
 
-Useful stop stages include `modgen`, `fir`, `tileoffload-pipeline`, `ttgir`,
+Useful stop stages include `modgen`, `fir`, `tileoff-pipeline`, `ttgir`,
 `llvm-mlir`, `llvm-ir`, `ptx`, `hsaco`, `device-image`, `embed`, `host-ll`,
 `host-obj`, `object`, `objects`, and `link`.
 
 ```sh
 tileoffload-flang --tileoff-verbose --tileoff-keep \
-  --tileoff-stop-after tileoffload-pipeline -c kernels.f90
+  --tileoff-stop-after tileoff-pipeline -c kernels.f90
 ```
 
 ### Driver environment variables
@@ -1040,7 +1293,9 @@ tileoffload-flang --tileoff-verbose --tileoff-keep \
 | Variable | Purpose |
 | --- | --- |
 | `LLVM_BUILD` | TileOffload-enabled LLVM/Flang build directory. |
-| `TRITON_OPT` | `triton-opt` executable. |
+| `TRITON_OPT` | `triton-opt` executable; also needed for CUDA Tile fallback kernels. |
+| `TILEOFF_CUDA_TILE_TRANSLATE` | CUDA Tile translator; default `cuda-tile-translate` on PATH. |
+| `TILEOFF_TILEIRAS` | Tile IR assembler; default `tileiras` on PATH. |
 | `MLIR_TRANSLATE` | Matching `mlir-translate`. |
 | `LLC` | Matching `llc` used to emit PTX or an AMDGPU object. |
 | `LLVM_LINK` | Matching `llvm-link`; defaults to `$LLVM_BUILD/bin/llvm-link`. |
@@ -1062,15 +1317,20 @@ tileoffload-flang --tileoff-verbose --tileoff-keep \
 | `TILEOFF_FALLBACK_BACKEND` | Fallback backend; default `triton`. |
 | `TILEOFF_ALLOW_BACKEND_FALLBACK` | Boolean backend-fallback control. |
 | `TILEOFF_NUM_WARPS` | Requested warp count; current default `1`. |
-| `TILEOFF_THREADS_PER_WARP` | Subgroup width; current default `32`. |
+| `TILEOFF_THREADS_PER_WARP` | Subgroup width override; CUDA defaults to 32, HIP architecture defaults are described above. |
 | `TILEOFF_NUM_STAGES` | Pipeline stages; current default `3`. |
 | `TILEOFF_F64_MATMUL_STRATEGY` | Default f64 matmul strategy. |
+| `TILEOFF_MATMUL_PIPELINE` | Build-time CUDA matmul policy: `0`, `1`, or current default `auto`. |
+| `TILEOFF_MATMUL_F64_PIPELINE_STAGES` | FP64 dot auto-policy stage count; default `3`. |
+| `TILEOFF_MATMUL_TF32_PIPELINE_STAGES` | TF32 auto-policy stage count; default `3`. |
+| `TILEOFF_MATMUL_ALIGNED_LOADS` | Opt-in guarded TF32 alignment specialisation at build time. |
+| `TILEOFF_MATMUL_PACK_A` | Experimental patch: build-time `auto`/`1` emits automatic A-packing candidates; unset/`0` does not. |
 | `TILEOFF_WORKDIR` | Intermediate-directory parent. |
 | `TILEOFF_TTIR_TO_TTGIR_PASSES` | Advanced TTIR-to-TTGIR pass-pipeline override. |
 | `TILEOFF_TTGIR_TO_LLVM_PASSES` | Advanced TTGIR-to-LLVM-MLIR pass-pipeline override. |
 | `TILEOFF_HIP_TTIR_TO_TTGIR_PASSES` | HIP-only TTIR-to-TritonGPU pass-pipeline override. |
 | `TILEOFF_HIP_TTGIR_TO_LLVM_PASSES` | HIP-only TritonGPU-to-LLVM-MLIR pass-pipeline override. |
-| `TILEOFF_ALLOW_EMPTY_KERNELS` | Permit an empty kernel list despite an TileOffload `parallel` launch; default false. Data-only sources do not need it. |
+| `TILEOFF_ALLOW_EMPTY_KERNELS` | Permit an empty kernel list despite a TileOffload `parallel` launch; default false. Data-only sources do not need it. |
 
 The work directory must be writable and contain no whitespace because some
 toolchain components and generated command lines require whitespace-free
@@ -1087,9 +1347,13 @@ intermediate paths.
 | `TILEOFF_ASYNC_RESIDENT` | Set to `1` to enqueue eligible cached-array launches without waiting after each launch; unset/default retains synchronous completion. |
 | `TILEOFF_DEBUG` | Print initialization, bundle, cache, data-region, launch, grid, tile, ABI, and reduction diagnostics. |
 | `TILEOFF_REDUCTION_STATS` | Print aggregate reduction-workspace counters at exit. |
+| `TILEOFF_MATMUL_PACK_A` | Experimental patch runtime policy: `0` original, `auto`/unset threshold-based, `1` force eligible shapes; requires candidate-enabled binary. |
 | `TILEOFF_MATMUL_SHARED_BYTES` | Advanced f32 matmul dynamic-shared-memory override; cannot be below the computed safe minimum. |
 | `TILEOFF_MATMUL_F64_SHARED_BYTES` | Advanced f64 matmul dynamic-shared-memory override; cannot be below the computed safe minimum. |
 | `TILEOFF_PTX_DIR`, `TILEOFF_PTX`, `TILEOFF_KERNELS_JSON` | Legacy CUDA external-bundle debugging fallbacks. Driver-built objects normally use embedded images and JSON. |
+
+The automatic-packing patch uses compiled shared-memory metadata for its new
+helper/packed kernels rather than the legacy matmul shared-memory overrides.
 
 ### Asynchronous resident execution
 
@@ -1141,7 +1405,7 @@ that exact context and the runtime does not retain or release it. Using the
 option with no current context is a fatal error.
 
 Modules, function handles, device allocations, data-region frames, streams,
-events, and reduction workspaces are stored per context and are never reused in
+events, reduction workspaces and experimental matmul packing scratch are stored per context and are never reused in
 another context or accelerator runtime.
 
 ### Thread safety
@@ -1159,6 +1423,77 @@ to reduce repeated parsing and lookup; live argument values, layouts, and
 ownership remain validated. Device/context selection is not permanently cached
 across calls.
 
+## Runtime device selection and MPI
+
+The public `TileOffload` Fortran module provides zero-based device selection:
+
+```fortran
+use TileOffload, only: tileoff_get_num_devices, tileoff_set_device_num, &
+                       tileoff_get_device_num
+use, intrinsic :: iso_c_binding, only: c_int32_t
+integer(c_int32_t) :: ngpus, device
+
+ngpus = tileoff_get_num_devices()
+if (ngpus <= 0) error stop "No visible accelerator devices"
+device = 0_c_int32_t
+call tileoff_set_device_num(device)
+device = tileoff_get_device_num()
+```
+
+These are the current renamed interfaces; they are not `tileoff_*` symbols.
+They bind to the matching C runtime entry points. The module source is
+`flang/lib/Runtime/TileOffload/TileOffload.f90`. If your installation does not
+provide `tileoffload.mod`, compile it once with the same host Flang and add its
+module directory to your application build:
+
+```sh
+mkdir -p tileoff-modules
+"$LLVM_BUILD/bin/flang" -c \
+  /path/to/llvm-project/flang/lib/Runtime/TileOffload/TileOffload.f90 \
+  -Jtileoff-modules -o tileoff-modules/TileOffload.o
+```
+
+Use `-Itileoff-modules` and link the module object with the appropriate runtime.
+For a program containing only these API calls, `--tileoff-runtime` ensures the
+wrapper links the runtime even if no directive triggers automatic detection.
+
+For MPI, select by **node-local rank**, before entering data or launching work:
+
+```fortran
+! Declarations, in the application's specification part:
+use mpi_f08
+use TileOffload
+use, intrinsic :: iso_c_binding, only: c_int32_t
+integer :: ierr, local_rank
+integer(c_int32_t) :: ngpus
+type(MPI_Comm) :: local_comm
+
+! After MPI_Init:
+call MPI_Comm_split_type(MPI_COMM_WORLD, MPI_COMM_TYPE_SHARED, 0, &
+                         MPI_INFO_NULL, local_comm, ierr)
+call MPI_Comm_rank(local_comm, local_rank, ierr)
+ngpus = tileoff_get_num_devices()
+if (ngpus <= 0) call MPI_Abort(MPI_COMM_WORLD, 1, ierr)
+call tileoff_set_device_num(int(mod(local_rank, int(ngpus)), c_int32_t))
+call MPI_Comm_free(local_comm, ierr)
+```
+
+The modulo policy intentionally shares devices if local ranks exceed visible
+GPUs; require a one-rank-per-GPU allocation if sharing is unwanted. Device
+ordinals refer to the process's visible device set. If a scheduler exposes one
+GPU per rank, each rank normally selects ordinal zero.
+
+Selection is host-thread-local and takes precedence over environment defaults
+for that thread. Changing it does not migrate allocations, data-region frames
+or pending work, and the setter is not a wait. Establish the device before
+`enter data`. Before switching away from an active phase, wait and complete
+that phase's ownership/host-transfer operations on its original device. A
+thread with explicit device selection uses the selected device's context,
+rather than relying on `TILEOFF_USE_CURRENT_CONTEXT`.
+
+This API supplies process-local selection; it does not implement MPI halo
+exchange, GPU-aware MPI buffers or inter-device copies.
+
 ## Compiler and runtime architecture
 
 ### Principal implementation areas
@@ -1171,36 +1506,39 @@ across calls.
 | TileOffload dialect | `flang/include/flang/Optimizer/Dialect/TileOffload/TileOffloadOps.td`, `TileOffloadDialect.td`, `flang/lib/Optimizer/Dialect/TileOffload/TileOffloadDialect.cpp` |
 | Recognition and planning | `TileOffloadKernelAnalysis.h/.cpp`, `TileOffloadKernelPlan.h` |
 | Triton backend | `flang/lib/Optimizer/Dialect/TileOffload/TileOffloadLowerToTriton.cpp` |
+| Direct CUDA Tile emitter | `flang/lib/Optimizer/Dialect/TileOffload/TileOffloadCudaTileEmitter.inc` |
+| Automatic packing patch | `TileOffloadMatmulPackEmitter.inc`, `tileoffload_matmul_pack.inc`, and driver shared-memory metadata |
+| Device-selection module/API | `flang/lib/Runtime/TileOffload/TileOffload.f90`, `tileoffload_device.h` |
 | Host runtime lowering | `flang/lib/Optimizer/Dialect/TileOffload/TileOffloadLowerToRuntime.cpp` |
 | External ABI aliases | `flang/lib/Optimizer/Dialect/TileOffload/TileOffloadEmitFortranAliases.cpp` |
 | Pass pipeline | `TileOffloadPasses.td`, `TileOffloadPipelines.cpp` |
-| CUDA/HIP runtimes | `flang/lib/Runtime/TileOffload/tileoff_runtime.cpp`, built as `FortranTileOffloadRuntime` or `FortranTileOffloadRuntimeHIP` |
+| CUDA/HIP runtimes | `flang/lib/Runtime/TileOffload/tileoffload_runtime.cpp`, built as `FortranTileOffloadRuntime` or `FortranTileOffloadRuntimeHIP` |
 | Compiler wrapper | `TileOffload/bin/tileoffload-flang` |
 
 The FIR dialect includes:
 
-- `tileoffload.launch` with tile sizes, pack targets, reduction metadata, and
+- `TileOffload.launch` with tile sizes, pack targets, reduction metadata, and
   `no_copyback` behavior;
-- `tileoffload.terminator` for its single-block region;
-- `tileoffload.data_region_enter` and `tileoffload.data_region_exit`;
-- `tileoffload.copyin`, `tileoffload.create`, `tileoffload.copyout`, and `tileoffload.delete`;
-- `tileoffload.present`, `tileoffload.update_host`, and `tileoffload.update_device`;
-- `tileoffload.release`, `tileoffload.release_all`, and `tileoffload.wait`.
+- `TileOffload.terminator` for its single-block region;
+- `TileOffload.data_region_enter` and `TileOffload.data_region_exit`;
+- `TileOffload.copyin`, `TileOffload.create`, `TileOffload.copyout`, and `TileOffload.delete`;
+- `TileOffload.present`, `TileOffload.update_host`, and `TileOffload.update_device`;
+- `TileOffload.release`, `TileOffload.release_all`, and `TileOffload.wait`.
 
-Hand-written MLIR tests must terminate `tileoffload.launch` with
-`tileoffload.terminator`; `fir.end` is not the tileoffload region terminator.
+Hand-written MLIR tests must terminate `TileOffload.launch` with
+`TileOffload.terminator`; `fir.end` is not the tileoffload region terminator.
 
 ### Pass pipeline
 
-The registered `tileoffload-pipeline` performs:
+The registered `tileoff-pipeline` performs:
 
-1. `tileoffload-assign-kernel-ids` for stable per-bundle IDs and symbols;
+1. `TileOffload-assign-kernel-ids` for stable per-bundle IDs and symbols;
 2. recognition, planning, backend selection, device IR, and JSON emission;
-3. `tileoffload-lower-to-runtime` for host launch and data calls; and
-4. optional `tileoffload-emit-fortran-aliases` for external Fortran ABI
+3. `TileOffload-lower-to-runtime` for host launch and data calls; and
+4. optional `TileOffload-emit-fortran-aliases` for external Fortran ABI
    compatibility.
 
-`tileoffload-outline-kernels` also exists for development experiments but is not a
+`TileOffload-outline-kernels` also exists for development experiments but is not a
 normal stage of the driver route.
 
 ### Recognition and consumed operations
@@ -1240,11 +1578,11 @@ tileoffload-flang --tileoff-launch-abi 3 -O3 -c kernel.f90
 tileoffload-flang --tileoff-launch-abi 2 -O3 -c kernel.f90
 ```
 
-Both `tileoffload-pipeline` and standalone `tileoffload-lower-to-runtime` default to v3:
+Both `tileoff-pipeline` and standalone `TileOffload-lower-to-runtime` default to v3:
 
 ```sh
 fir-opt --tileoff-pipeline="launch-abi=2 ttir-output=k.ttir json-output=k.json" input.fir
-fir-opt --tileoff-lower-to-runtime="launch-abi=2" input.fir
+fir-opt --TileOffload-lower-to-runtime="launch-abi=2" input.fir
 ```
 
 V3 lowering requires an explicit supported 64-bit `x86_64` or `aarch64` host
@@ -1284,11 +1622,11 @@ reduction-stage plans.
 - module framing and kernel emission; and
 - the count of backend-private pointer arguments.
 
-The only complete code-generation backend currently registered is `triton`.
-It can emit for the `cuda` or `hip` accelerator target. Backend selection
-supports `auto`, a named preferred backend, an optional fallback, and detailed
-fallback diagnostics. Mixed code-generation backends or accelerator targets
-within one emitted device module are not supported.
+`triton` provides the broadest coverage and can emit for CUDA or HIP.
+`cuda-tile` provides a narrower CUDA-only path. Backend selection supports
+`auto`, a named preferred backend, optional per-kernel fallback, and detailed
+rejection diagnostics. A compilation may emit both backends for CUDA, but
+mixing CUDA and HIP targets in one executable remains unsupported.
 
 ### JSON metadata
 
@@ -1304,10 +1642,12 @@ descriptor records:
 - device launch ABI version (still `2` with the v3 host launcher);
 - array, scalar, output, and reduction-result counts;
 - parameter roles, slots, names, types, array dimensions, and layout fields;
-- loop lower-bound and extent roles;
+- loop lower-bound and extent roles, constant steps and runtime-step scalar indices;
 - pack bindings and `copy_back_writes`;
 - backend-private pointer count; and
-- reduction operator and synthetic-stage identity where applicable.
+- reduction operator and synthetic-stage identity where applicable; and
+- in the automatic-packing patch, pack/packed-kernel IDs, transposed-A
+  orientation and compiled shared-memory requirements for the new kernels.
 
 Legacy PTX and Triton-private field aliases remain while older tools are being
 retired.
@@ -1320,9 +1660,10 @@ it into HSACO. The CUDA runtime rejects HIP/HSACO metadata, and the HIP runtime
 rejects CUDA/PTX or cubin metadata, preventing an image from being loaded by
 the wrong platform runtime.
 
-A future direct-PTX, CUDA Tile IR, or other backend may reuse the kernel plan,
-public ABI, metadata, embedding, and runtime dispatch layers, but its driver
-must still produce an image supported by the selected runtime.
+The implemented CUDA Tile backend reuses planning, public ABI, metadata,
+embedding and runtime dispatch, while emitting CUDA Tile IR and cubin. Other
+backends can reuse these layers too, provided they produce an image supported
+by the selected runtime.
 
 Adding a compiler backend enum alone is insufficient. Driver dispatch,
 manifest/embed logic, runtime loading, contract validation, and tests must be
@@ -1438,12 +1779,9 @@ Run all Flang tests with:
 cmake --build "$LLVM_BUILD" --target check-flang
 ```
 
-Run a focused test or directory with:
+Run a focused test directory with:
 
 ```sh
-"$LLVM_BUILD/bin/llvm-lit" -sv \
-  /path/to/llvm-project/flang/test/Lower/TileOffload/tileoffload-pipeline.f90
-
 "$LLVM_BUILD/bin/llvm-lit" -sv \
   /path/to/llvm-project/flang/test/Lower/TileOffload
 ```
@@ -1479,7 +1817,7 @@ The dedicated v3 test should cover:
 - identical device TTIR/JSON across host ABI selections where expected; and
 - unsupported host triples and invalid ABI selections.
 
-Keep checks for `tileoffload.launch` IR, data transfers, release, and synchronization
+Keep checks for `TileOffload.launch` IR, data transfers, release, and synchronization
 operations unchanged unless their actual semantics change. V2 matmul argument
 checks cannot be migrated by merely renaming the callee: v3 passes a request
 pointer, and the corresponding request stores must be checked instead.
@@ -1496,6 +1834,19 @@ Files ending in `.before-v3-default`, `.before-v2-pin`, or `.bak` are editor
 backups, not normal `.f90`/`.mlir` lit tests. Review changes and remove backups
 before committing. A switch in defaults does not establish that every legacy
 test has been migrated; run the suite and inspect remaining failures.
+
+### Bounds, steps and automatic-packing regressions
+
+Validate positive and negative steps, non-unit constants, runtime step changes,
+non-one/negative bounds, rectangular shapes, partial tiles, empty iteration
+spaces and untouched output elements. A zero runtime step must fail before a
+GPU launch. Repeat through host ABIs 2 and 3 and async modes 0 and 1.
+
+For the automatic-packing patch, run its CPU checks and GPU script before
+benchmarking. GPU cases should include changing A between calls, scratch growth,
+alignment fallbacks, and observing the pack kernel in debug output. CPU mocks
+and successful patch application are not substitutes for Triton parsing,
+device compilation or GPU numerical tests.
 
 ### Reduction validation executable
 
@@ -1652,8 +2003,8 @@ context; never infer ownership from a process-global device-pointer cache.
 The launch is outside the recognised subset. Read the final recogniser reason
 first. Common causes include:
 
-- a non-unit loop step;
-- a matrix loop whose lower bound is not `1`;
+- a zero step, an unsupported runtime-step type, or a step that is not launch-invariant;
+- bounds or accesses that cannot be recovered safely;
 - an unsupported call, conversion, or intrinsic;
 - an indirect or unprovable array subscript;
 - a loop-carried dependence;
@@ -1668,7 +2019,27 @@ Use `--tileoff-backend triton`, permit a Triton fallback, or inspect the detaile
 rejection. `--tileoff-no-backend-fallback` is useful in tests that must prove a
 specific backend handled every kernel.
 
-### Driver fails at `tileoffload-pipeline`
+### Kernel IDs collide after the rename
+
+The current driver passes `TILEOFF_KERNEL_BUNDLE_KEY` to `fir-opt`, and
+`TileOffloadAssignKernelIds.cpp` reads that exact name. A mismatch such as
+`TILEOFFLOAD_KERNEL_BUNDLE_KEY` can leave separately compiled sources using the
+same sequential IDs. Fix the driver/compiler agreement and rebuild **all**
+contributing objects and archives. Do not disable the runtime collision check.
+
+### CUDA Tile translator or architecture errors
+
+Confirm both `cuda-tile-translate` and `tileiras` resolve, or set the documented
+absolute-path overrides. The assembler's local `--help` output is authoritative
+for its accepted `--gpu-name` spellings. An unsupported architecture requires a
+compatible toolchain or Triton backend, not a blind suffix removal.
+
+Syntax errors in `.cuda-tile.mlir` generally indicate emitter/translator version
+mismatch. Keep the generated IR, exact tool versions and failing invocation.
+A fallback warning followed by `selected backend: mixed` is expected when a
+source contains kernels outside the direct backend's subset.
+
+### Driver fails at `tileoff-pipeline`
 
 Re-run with `--tileoff-verbose --tileoff-keep`, execute the printed `fir-opt`
 command directly, and inspect the retained `.fir`, `.kernels.ttir`,
@@ -1718,7 +2089,7 @@ targets were mixed. Recompile consistently and repeat the same
 ### `no kernels were emitted`
 
 Data-only TileOffload sources are accepted automatically. If the message says that
-an TileOffload `parallel` launch was present, recognition or pipeline output is
+a TileOffload `parallel` launch was present, recognition or pipeline output is
 inconsistent. Inspect retained FIR/JSON rather than setting
 `TILEOFF_ALLOW_EMPTY_KERNELS=1` in normal builds; the variable suppresses a
 safety check and does not make a missing kernel execute.
@@ -1806,7 +2177,9 @@ grid, tile, subgroup/block size, accelerator target, and image metadata.
 
 - TileOffload is experimental and deliberately recogniser-based rather than a
   general-purpose Fortran device compiler.
-- Loop steps must be `1`; matmul loop lower bounds must also be `1`.
+- Supported loop bounds need not start at one. Constant/runtime steps must be
+  nonzero and representable in the supported signed 32-bit step ABI; runtime
+  steps must be launch-invariant. Backend-specific restrictions still apply.
 - Kernel computation supports logical ranks one and two. Data-descriptor
   operations support ranks one through three.
 - Device extents, lower bounds, strides, and index captures use signed 32-bit
@@ -1816,13 +2189,16 @@ grid, tile, subgroup/block size, accelerator target, and image metadata.
 - All output arrays in one kernel must currently have the same element type.
 - Fused multi-result reductions require one common operator and result type.
 - Matrix multiplication supports only f32 and f64.
-- Triton is the only complete code-generation backend. Its CUDA path emits PTX
-  and its HIP path emits HSACO. Cubin is accepted by the CUDA typed-image ABI
-  but is not the normal Triton output.
+- Triton has the broadest implemented coverage. Direct CUDA Tile currently
+  handles a restricted pointwise/rank-1 reduction subset and emits cubin;
+  matmul, general stencils and fused multi-result reductions require Triton.
+- Automatic matmul packing is currently an opt-in TF32/CUDA/Triton patch,
+  with full compiler and GPU validation outstanding. It does not cache packed
+  contents across launches or support automatic B/C packing.
 - CUDA and HIP use separate runtime libraries. Mixing CUDA and HIP bundles in
   one executable or loading an image through the wrong runtime is unsupported.
-- Mixed code-generation backends or accelerator targets in one device module
-  are unsupported.
+- Mixed CUDA Tile/Triton kernels are supported for CUDA. Mixed accelerator
+  targets in one executable are unsupported.
 - The runtime owns one stream per CUDA or HIP context and serializes operations
   within each context; initialization/cleanup also use shared registry/lifetime
   coordination.
