@@ -186,7 +186,9 @@ function(add_tileoff_benchmark name kernel main)
     set(effective_tileoff_num_warps "${TILEOFF_MATMUL_NUM_WARPS}")
   endif()
 
-  if("${name}" STREQUAL "tileoffload-matmul-2d-tf32")
+  if("${name}" STREQUAL "tileoffload-matmul-2d-tf32" OR
+     "${name}" STREQUAL "tileoffload-matmul-2d-tf32-packed" OR
+     "${name}" STREQUAL "tileoffload-matmul-2d-tf32-repack")
     set(effective_tileoff_num_warps "${TILEOFF_MATMUL_TF32_NUM_WARPS}")
   endif()
 
@@ -354,6 +356,15 @@ if(TILEOFF_ENABLE_TILEOFF_BENCHMARKS)
   add_tileoff_benchmark(tileoffload-matmul-2d-tf32
     matmul_2d_tf32_kernel.f90
     matmul_2d_tf32_main.f90)
+
+  # Same data/reference as TF32; explicit AP(k,i) storage, pack-once or per-call.
+  add_tileoff_benchmark(tileoffload-matmul-2d-tf32-packed
+    matmul_2d_tf32_packed_kernel.f90
+    matmul_2d_tf32_packed_main.f90)
+
+  add_tileoff_benchmark(tileoffload-matmul-2d-tf32-repack
+    matmul_2d_tf32_packed_kernel.f90
+    matmul_2d_tf32_repack_main.f90)
 
   add_tileoff_benchmark(tileoffload-matmul-2d-f64
     matmul_2d_f64_kernel.f90

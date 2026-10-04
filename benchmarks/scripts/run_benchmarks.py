@@ -359,6 +359,18 @@ def collect_targets(
         "tileoff_matmul_2d_tf32",
         build / "benchmarks/tileoffload/tileoffload-matmul-2d-tf32/tileoffload-matmul-2d-tf32",
     )
+    # Keep all TF32 layouts in one benchmark group for side-by-side tables.
+    # The target/name distinguishes whether packing is included in timing.
+    for variant in ("packed", "repack"):
+        executable = f"tileoffload-matmul-2d-tf32-{variant}"
+        maybe_add(
+            targets_2d,
+            "matmul_2d_tf32",
+            "tileoffload",
+            f"tileoff_matmul_2d_tf32_{variant}",
+            build / "benchmarks/tileoffload" / executable / executable,
+        )
+
     maybe_add(
         targets_2d,
         "matmul_2d_f64",

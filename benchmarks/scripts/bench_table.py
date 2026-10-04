@@ -60,6 +60,8 @@ KNOWN_TARGET_ORDER = [
 
     "tileoff_matmul_2d",
     "tileoff_matmul_2d_tf32",
+    "tileoff_matmul_2d_tf32_packed",
+    "tileoff_matmul_2d_tf32_repack",
     "cuda_matmul_2d",
     "cuda_cublas_matmul_2d_fp32",
     "cuda_cublas_matmul_2d_tf32",
@@ -158,8 +160,19 @@ def size_sort_key(size):
     return (int(size), 1)
 
 
+TF32_PACKING_LABELS = {
+    "tileoff_matmul_2d_tf32": "unpacked",
+    "tileoff_matmul_2d_tf32_packed": "pack once",
+    "tileoff_matmul_2d_tf32_repack": "pack every call",
+}
+
+
 def target_label(row, mode):
     if mode == "backend":
+        # Do not aggregate distinct timing policies into one backend column.
+        variant = TF32_PACKING_LABELS.get(row.get("target"))
+        if variant:
+            return f"{row['backend']} ({variant})"
         return row["backend"]
 
     if mode == "target":
@@ -449,6 +462,13 @@ def main():
         print("")
         print(f"**Metric:** `{metric_desc}`")
         print("")
+        packing_targets = {"tileoff_matmul_2d_tf32_packed", "tileoff_matmul_2d_tf32_repack"}
+        if any(r["benchmark"] == benchmark and r.get("target") in packing_targets
+               for r in rows):
+            print("`_packed`: packing once is excluded from timing. "
+                  "`_repack`: packing is included on every call. "
+                  "Both rates count matmul FLOPs only.")
+            print("")
         print(markdown_table(headers, table_rows))
         print("")
 

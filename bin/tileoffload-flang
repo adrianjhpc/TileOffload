@@ -97,6 +97,9 @@ Optional environment:
   TILEOFF_NUM_WARPS          number of warps to use, defaults to 1
   TILEOFF_THREADS_PER_WARP   threads per warp, defaults to 32
   TILEOFF_NUM_STAGES         number of Triton pipeline stages, defaults to 3
+  TILEOFF_MATMUL_PIPELINE    auto (default): SM90 FP64-dot/TF32; 0: off; 1: force
+  TILEOFF_MATMUL_F64_PIPELINE_STAGES  auto-mode FP64 stages (default 3; 1 disables)
+  TILEOFF_MATMUL_TF32_PIPELINE_STAGES auto-mode TF32 stages (default 3; 1 disables)
   TILEOFF_SM                 default CUDA SM, default 80
   TILEOFF_TARGET             cuda (default) or hip
   TILEOFF_GPU_ARCH           target architecture (sm_90a or gfx942)
@@ -410,6 +413,10 @@ write_toolchain_manifest() {
     printf 'ACCELERATOR_TARGET=%s\nGPU_ARCH=%s\nSM=%s\nNUM_WARPS=%s\nTHREADS_PER_WARP=%s\nNUM_STAGES=%s\n' \
       "$ACCELERATOR_TARGET" "$GPU_ARCH" "$SM" "$NUM_WARPS" \
       "$THREADS_PER_WARP" "$NUM_STAGES"
+    printf 'MATMUL_PIPELINE=%s\n' "$MATMUL_PIPELINE"
+    printf 'MATMUL_PACK_A=%s\n' "${TILEOFF_MATMUL_PACK_A:-0}"
+    printf 'MATMUL_F64_PIPELINE_STAGES=%s\nMATMUL_TF32_PIPELINE_STAGES=%s\n' \
+      "${TILEOFF_MATMUL_F64_PIPELINE_STAGES:-3}" "${TILEOFF_MATMUL_TF32_PIPELINE_STAGES:-3}"
     printf 'LAUNCH_ABI=%s\n' "$LAUNCH_ABI"
     printf 'BACKEND_REQUESTED=%s\nBACKEND_FALLBACK=%s\nALLOW_BACKEND_FALLBACK=%s\n' \
       "$BACKEND" "$FALLBACK_BACKEND" \
@@ -554,6 +561,40 @@ for kernel in kernels:
 else:
     raise SystemExit("tileoffload-flang: error: missing kernel precision metadata")
 PYCODE
+}
+
+# Select by metadata, never by generated kernel name. The caller separately
+# checks for a dot operation so FP64 reduce/FMA strategies remain baseline.
+select_cuda_matmul_pipeline() {
+  python3 - "$1" "$2" "$MATMUL_PIPELINE" "$SM_NUM" "$NUM_STAGES" \
+    "${TILEOFF_MATMUL_F64_PIPELINE_STAGES:-3}" \
+    "${TILEOFF_MATMUL_TF32_PIPELINE_STAGES:-3}" <<'PYSELECT'
+import json, sys
+path, name, mode, sm, requested, f64, tf32 = sys.argv[1:]
+k = next((k for k in json.load(open(path))["kernels"] if k["name"] == name), None)
+if k is None:
+    raise SystemExit("missing kernel metadata: " + name)
+types = {
+    p.get("type")
+    for p in k.get("params", [])
+    if "array_index" in p and str(p.get("type", "")).startswith("ptr<")
+}
+kind = "other"
+if k.get("kind") == "matmul2d":
+    if types == {"ptr<f64>"}:
+        kind = "f64"
+    elif types == {"ptr<f32>"}:
+        kind = k.get("matmul_precision", "ieee")
+stages = 1
+if mode == "1":
+    stages = int(requested)
+elif mode == "auto" and int(sm) == 90:
+    if kind == "f64":
+        stages = int(f64)
+    elif kind == "tf32":
+        stages = int(tf32)
+print(kind, stages)
+PYSELECT
 }
 
 require_triton_toolchain() {
@@ -1402,6 +1443,7 @@ LAUNCH_ABI="${TILEOFF_LAUNCH_ABI:-3}"
 NUM_WARPS="${TILEOFF_NUM_WARPS:-1}"
 THREADS_PER_WARP="${TILEOFF_THREADS_PER_WARP:-}"
 NUM_STAGES="${TILEOFF_NUM_STAGES:-3}"
+MATMUL_PIPELINE="${TILEOFF_MATMUL_PIPELINE:-auto}"
 F64_MATMUL_STRATEGY="${TILEOFF_F64_MATMUL_STRATEGY:-reduce}"
 CUDA_LIB_DIR="${CUDA_LIB_DIR:-}"
 CUDA_LIBDEVICE="${TILEOFF_CUDA_LIBDEVICE:-}"
@@ -1873,6 +1915,19 @@ if (( TILEOFF_SOURCE_COUNT > 0 )); then
 
   [[ "$NUM_WARPS" =~ ^[0-9]+$ ]] || die "invalid num-warps value '$NUM_WARPS'"
   [[ "$THREADS_PER_WARP" =~ ^[0-9]+$ ]] || die "invalid threads-per-warp value '$THREADS_PER_WARP'"
+  [[ "$MATMUL_PIPELINE" == "0" || "$MATMUL_PIPELINE" == "1" || "$MATMUL_PIPELINE" == "auto" ]] ||
+    die "TILEOFF_MATMUL_PIPELINE must be auto, 0 or 1"
+  for stage_override in "${TILEOFF_MATMUL_F64_PIPELINE_STAGES:-3}"                         "${TILEOFF_MATMUL_TF32_PIPELINE_STAGES:-3}"; do
+    [[ "$stage_override" =~ ^([1-9]|1[0-6])$ ]] ||
+      die "per-precision pipeline stages must be an integer from 1 to 16"
+  done
+  if [[ "$MATMUL_PIPELINE" == "1" ]]; then
+    [[ "$ACCELERATOR_TARGET" == "cuda" ]] && (( SM_NUM >= 80 && SM_NUM <= 90 )) ||
+      die "experimental matmul pipelining currently requires CUDA SM80-SM90"
+    [[ -z "${TILEOFF_TTIR_TO_TTGIR_PASSES:-}" &&
+       -z "${TILEOFF_TTGIR_TO_LLVM_PASSES:-}" ]] ||
+      die "TILEOFF_MATMUL_PIPELINE cannot be combined with custom Triton pass pipelines"
+  fi
   [[ "$NUM_STAGES" =~ ^[0-9]+$ ]] || die "invalid num-stages value '$NUM_STAGES'"
   if (( ${#NUM_WARPS} > 3 || ${#THREADS_PER_WARP} > 3 || ${#NUM_STAGES} > 2 )); then
     die "numeric TileOffload launch option is outside the supported range"
@@ -2258,12 +2313,16 @@ compile_tileoff_source() {
         local -a matmul_precision_passes=()
         if [[ "$(kernel_matmul_precision "$json" "$kernel_name")" == "tf32x3" ]]; then
           # Expand compensated FP32 dots before selecting tensor-core layouts.
-          matmul_precision_passes+=(--tritongpu-coalesce --tritongpu-F32DotTC)
+          matmul_precision_passes+=(--tritongpu-F32DotTC)
         fi
         run "$TRITON_OPT" "$kernel_ttir" \
+          --canonicalize --cse \
           "--convert-triton-to-tritongpu=target=cuda:$SM_NUM num-warps=$kernel_warps" \
+          --tritongpu-coalesce \
           "${matmul_precision_passes[@]}" \
-          --tritongpu-accelerate-matmul --canonicalize --cse -o "$kernel_ttgir"
+          --tritongpu-accelerate-matmul \
+          --tritongpu-remove-layout-conversions \
+          --canonicalize --cse -o "$kernel_ttgir"
       fi
       test -s "$kernel_ttgir" || die "TTGIR was not generated for $kernel_name"
     done
@@ -2301,17 +2360,53 @@ compile_tileoff_source() {
           --cse \
           -o "$kernel_llvm_mlir"
       else
-        run "$TRITON_OPT" "$kernel_ttgir" \
-          --tritongpu-coalesce \
-          --tritongpu-remove-layout-conversions \
-          --tritongpu-optimize-thread-locality \
-          --triton-nvidia-gpu-plan-cta \
+        local cuda_lower_input="$kernel_ttgir"
+        local -a cuda_proxy_fence_passes=()
+        local -a cuda_layout_passes=(--tritongpu-coalesce
+          --tritongpu-remove-layout-conversions
+          --tritongpu-optimize-thread-locality --triton-nvidia-gpu-plan-cta)
+        local kernel_pipeline_kind kernel_pipeline_stages selection
+        selection="$(select_cuda_matmul_pipeline "$json" "$kernel_name")" ||
+          die "could not select matmul pipeline for $kernel_name"
+        read -r kernel_pipeline_kind kernel_pipeline_stages <<< "$selection"
+        if ! grep -Eq 'tt\.dot[[:space:]]|ttng\.warp_group_dot[[:space:]]' "$kernel_ttgir"; then
+          kernel_pipeline_stages=1
+        fi
+        log "  CUDA matmul policy: $kernel_name, mode=$MATMUL_PIPELINE, class=$kernel_pipeline_kind, configured-stages=$NUM_STAGES, effective-stages=$kernel_pipeline_stages"
+        printf 'mode=%s\nclass=%s\nconfigured_stages=%s\neffective_stages=%s\n' \
+          "$MATMUL_PIPELINE" "$kernel_pipeline_kind" "$NUM_STAGES" "$kernel_pipeline_stages" \
+          > "${kernel_ttgir}.pipeline-selection.txt"
+        if [[ "$MATMUL_PIPELINE" != "0" ]] &&
+           grep -Eq 'tt\.dot[[:space:]]|ttng\.warp_group_dot[[:space:]]' "$kernel_ttgir"; then
+          if (( kernel_pipeline_stages > 1 )); then
+            cuda_lower_input="${kernel_ttgir%.mlir}.pipelined.mlir"
+            log "  CUDA matmul pipeline: $kernel_name, requested stages=$kernel_pipeline_stages"
+            run "$TRITON_OPT" "$kernel_ttgir" \
+              "${cuda_layout_passes[@]}" \
+              --tritongpu-optimize-dot-operands \
+              --canonicalize --cse \
+              "--tritongpu-assign-latencies=num-stages=$kernel_pipeline_stages" \
+              --tritongpu-schedule-loops \
+              "--tritongpu-pipeline=num-stages=$kernel_pipeline_stages" \
+              --tritongpu-remove-layout-conversions \
+              --canonicalize --cse -o "$cuda_lower_input"
+            cuda_layout_passes=()
+            # Physical shared-memory aliasing is known after allocation.
+            cuda_proxy_fence_passes+=("--triton-nvidia-gpu-proxy-fence-insertion=compute-capability=$SM_NUM")
+          else
+            log "  CUDA matmul pipeline: $kernel_name, stages=1 (baseline lowering)"
+          fi
+        fi
+        run "$TRITON_OPT" "$cuda_lower_input" \
+          "${cuda_layout_passes[@]}" \
           --tritongpu-allocate-warp-groups \
+          "--triton-nvidia-gpu-fence-insertion=compute-capability=$SM_NUM" \
           --triton-nvidia-mma-lowering \
           --allocate-shared-memory-nv \
           --convert-scf-to-cf \
           --canonicalize \
           --cse \
+          "${cuda_proxy_fence_passes[@]}" \
           --convert-triton-gpu-to-llvm \
           --canonicalize \
           --cse \
@@ -2328,6 +2423,26 @@ compile_tileoff_source() {
       test -s "$kernel_llvm_mlir" || die "kernel LLVM MLIR was not generated for $kernel_name"
       if [[ "$ACCELERATOR_TARGET" == "cuda" ]]; then
         lower_ttg_warp_id_to_nvvm "$kernel_llvm_mlir"
+      fi
+      if [[ "$ACCELERATOR_TARGET" == "cuda" ]]; then
+        # Packing/transposed layouts can need shared memory for layout conversion.
+        # Carry the actual allocation through the embedded manifest, never guess.
+        python3 - "$json" "$kernel_name" "$kernel_llvm_mlir" <<'PY_SHARED'
+import json, re, sys
+from pathlib import Path
+path = Path(sys.argv[1])
+data = json.loads(path.read_text())
+kernel = next(k for k in data["kernels"] if k["name"] == sys.argv[2])
+required = kernel.get("kind") == "matmul_pack_a" or any(
+    k.get("auto_packed_matmul_id") == kernel["id"] for k in data["kernels"])
+if required:
+    text = Path(sys.argv[3]).read_text()
+    match = re.search(r'"?(?:ttg|triton_gpu)\.shared"?\s*=\s*(\d+)\s*:\s*i32', text)
+    if not match:
+        raise SystemExit("missing compiled shared-memory size for " + sys.argv[2])
+    kernel["compiled_shared_bytes"] = int(match.group(1))
+    path.write_text(json.dumps(data, indent=2) + "\n")
+PY_SHARED
       fi
       validate_no_triton_gpu_ops "$kernel_llvm_mlir"
       validate_no_unrealized_casts "$kernel_llvm_mlir"
