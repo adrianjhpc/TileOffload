@@ -58,8 +58,7 @@ TileOffload currently provides:
 - `parallel` lowering for recognised one- and two-dimensional Fortran loops;
 - arbitrary runtime loop lower and upper bounds for elementwise, stencil, and
   reduction kernels, including recognised nonzero constant and runtime steps;
-- descriptor-based host launches through ABI v3 by default, with explicit v2
-  compatibility and variadic array/scalar bindings;
+- descriptor-based host launches
 - one or more output assignments in a recognised loop;
 - `real(4)`, `real(8)`, and signed `integer(1|2|4|8)` device expressions;
 - affine induction-variable expressions, including the common
@@ -102,7 +101,7 @@ the already measured explicit packing benchmarks.
 
 | Area | Current status |
 | --- | --- |
-| CUDA/Triton kernels, residency, reductions, v3 launches | Exercised by the benchmark suite and CloverLeaf; correctness must still be checked for each compiler/target configuration. |
+| CUDA/Triton kernels, residency, reductions, launches | Exercised by the benchmark suite and CloverLeaf; correctness must still be checked for each compiler/target configuration. |
 | Arbitrary bounds and constant non-unit/negative steps | Implemented; bounds, tails, empty ranges and untouched-output tests have passed in development. |
 | Runtime step values | Implemented in the supplied compiler/runtime sources; steps must be launch-invariant, nonzero signed 32-bit values. Backend restrictions still apply. |
 | Direct CUDA Tile | Implemented for a limited pointwise and rank-1 reduction subset; BabelStream has run through this path. Not a replacement for all Triton lowering. |
@@ -147,7 +146,7 @@ Fortran + !$tileoff
 
 A CUDA bundle can contain both Triton PTX and CUDA Tile cubin kernels. Fallback
 is a compile-time backend choice, not a silent retry of an incorrectly running
-GPU kernel. Host ABI v3 is independent of that choice.
+GPU kernel. Host ABI is independent of that choice.
 
 The recogniser is intentionally fail-closed. A `parallel` region is compiled
 only when every relevant operation can be represented in the selected kernel
@@ -284,10 +283,7 @@ export TILEOFF_TILEIRAS=/path/to/tileiras
 The defaults are `cuda-tile-translate` and `tileiras` on `PATH`. The supplied
 driver requests Tile IR bytecode version `13.1`; translator, assembler and
 installed driver must support the selected path. Check the assembler's actual
-`--gpu-name` list. A newer compatibility document does not add architectures
-to an older local assembler, and `sm_90a` is not interchangeable with `sm_90`
-for every tool. Do not silently compile for `sm_80` to bypass an unsupported
-architecture diagnostic.
+`--gpu-name` list.
 
 Triton tools remain necessary when any kernel falls back to Triton. Pure CUDA
 Tile kernels use the direct path, but still need Flang and host compilation
@@ -732,11 +728,6 @@ do i = lower, upper
 end do
 ```
 
-Both the v3 host descriptor and the retained v2 binding interface support
-variadic arguments. They are not restricted to the older
-three-input/three-scalar shape. Practical limits instead come from the
-recogniser, generated kernel signature, and backend.
-
 Straight-line stores may feed later expressions in the same logical
 iteration. Mutable scalar temporaries are accepted only when proven private to
 that iteration.
@@ -971,7 +962,6 @@ The threshold is provisional. Unsupported layouts, overlapping host allocation
 ranges and scratch allocation failure fall back to the original path. Extra
 scratch is `4*M*round_up(K,16)` bytes per context. This initial implementation
 does not cover IEEE FP32, FP64, TF32x3, cuTile, HIP or non-unit/runtime steps.
-Setting the runtime variable cannot add missing kernels to an old binary.
 
 Use `TILEOFF_DEBUG=1` once to confirm an `auto-pack A kernel=...` message; disable
 debug output for timings. Run the patch package's `tests/run_gpu.sh` first.
@@ -1361,8 +1351,7 @@ helper/packed kernels rather than the legacy matmul shared-memory overrides.
 TILEOFF_ASYNC_RESIDENT=1 TILEOFF_DEVICE=0 ./program
 ```
 
-This is independent of the host launch ABI: selecting v3 does not enable async
-execution. Only eligible array launches whose allocations remain cached may
+This is independent of the host launch ABI. Only eligible array launches whose allocations remain cached may
 return before device completion. Temporary/host-output paths and reductions
 returning host scalars retain synchronization. Host transfers and allocation
 lifetime operations order against queued work on the TileOffload stream.
@@ -1553,7 +1542,7 @@ loop/terminator machinery. When adding a pattern, update consumed-operation
 accounting with the recogniser. Otherwise a valid pattern may be rejected—or
 an effect could be erased without being represented in device code.
 
-### Host launch ABI v3 (default)
+### Host launch ABI 
 
 The compiler constructs a host request containing launch dimensions, array
 records, scalar/index captures, and reduction-result records, then emits:
@@ -1587,25 +1576,7 @@ fir-opt --TileOffload-lower-to-runtime="launch-abi=2" input.fir
 
 V3 lowering requires an explicit supported 64-bit `x86_64` or `aarch64` host
 `llvm.target_triple`. Missing triples, x32/ILP32 forms, and other host targets
-are rejected by the current implementation. Use v2 for unsupported host targets;
-hand-written MLIR intended to test v3 must declare its actual supported target.
-
-### V2 compatibility and device metadata
-
-V2 remains available through `__tileoff_begin_launch_v2`, typed
-`__tileoff_bind_*_v2` calls, and `__tileoff_commit_launch_v2`. Keep these runtime
-symbols and their compatibility tests.
-
-**The host launch selection and JSON device launch ABI are different contracts.**
-The v3 integration retains device JSON `launch_abi_version = 2`, device signatures,
-and backend-private argument accounting. Do not rename JSON fields, change their
-version to 3, or change runtime device-ABI checks just because v3 is the host
-default. No new device precision mode is implied by v3.
-
-Maintain the default consistently in the driver, `TileOffloadPipelines.cpp`, and
-`TileOffloadPasses.td`. Rebuild generated pass declarations through the normal build;
-do not edit generated files. The driver logs the selected host ABI and includes
-it in its toolchain fingerprint.
+are rejected by the current implementation.
 
 ## Backend artifact contract
 
@@ -1639,7 +1610,7 @@ descriptor records:
 - image index and file;
 - kernel kind and rank;
 - logical tile, warp/stage schedule, subgroup width, and threads per CTA;
-- device launch ABI version (still `2` with the v3 host launcher);
+- device launch ABI version;
 - array, scalar, output, and reduction-result counts;
 - parameter roles, slots, names, types, array dimensions, and layout fields;
 - loop lower-bound and extent roles, constant steps and runtime-step scalar indices;
@@ -1648,9 +1619,6 @@ descriptor records:
 - reduction operator and synthetic-stage identity where applicable; and
 - in the automatic-packing patch, pack/packed-kernel IDs, transposed-A
   orientation and compiled shared-memory requirements for the new kernels.
-
-Legacy PTX and Triton-private field aliases remain while older tools are being
-retired.
 
 ### Runtime images
 
@@ -1687,33 +1655,6 @@ is contiguous, so wider tiles in that dimension are useful candidates. The
 emitted TTGIR layout, array strides, masks, and final device code determine the
 actual memory behavior. More warps are not automatically better.
 
-### Inspect generated kernels
-
-Keep intermediates for the exact source/configuration being measured:
-
-```sh
-mkdir -p tileoffload-inspect
-tileoffload-flang --tileoff-target cuda --tileoff-gpu-arch sm_90a \
-  --tileoff-num-warps 8 --tileoff-threads-per-warp 32 \
-  --tileoff-keep --tileoff-workdir "$PWD/tileoffload-inspect" \
-  -O3 -c reset_field_kernel.f90 -o reset_field_kernel.o
-
-rg --files tileoffload-inspect | rg '\.ptx$'
-rg -n --glob '*.ptx' '\.entry' tileoffload-inspect
-rg -n --glob '*.json' '"tile"|"num_warps"|"threads_per_cta"' tileoffload-inspect
-```
-
-Retain normal application include/module flags and relink before measuring.
-The normal driver log does not list every kernel name. Generated `.kernels.json`
-and per-kernel filenames map source bundles to names; `.entry` identifies PTX
-entry points. Do not assume an old numeric kernel name identifies a new build.
-
-Inspect `.ttgir.mlir` for `sizePerThread`, `threadsPerWarp`, and `warpsPerCTA`;
-inspect PTX for address calculation, predicated memory operations, and arithmetic.
-Scalar 64-bit loads/stores are not inherently uncoalesced. PTX register names
-are virtual registers and cannot establish final physical register usage,
-spilling, or achieved occupancy.
-
 ### Nsight Systems summaries
 
 For CUDA tracing, use the application's normal single-process invocation and
@@ -1728,7 +1669,6 @@ nsys stats \
   --report cuda_gpu_kern_sum,cuda_api_sum,cuda_gpu_mem_time_sum,cuda_gpu_mem_size_sum \
   cloverleaf-tileoffload.nsys-rep > cloverleaf-tileoffload-summary.txt
 ```
-
 NVTX ranges appear only if instrumentation is enabled; CUDA tracing does not
 require application NVTX instrumentation. Nsight Systems can also generate these
 summaries from its SQLite export. Retain the full trace when investigating
@@ -1739,7 +1679,7 @@ Compare matching mesh dimensions, step counts, summary frequency, and validation
 results. Compare kernel families as well as individual kernels because one
 implementation may split work into more launches. Time inside
 `cuEventSynchronize`, stream waits, or synchronous copies includes waiting for
-GPU work; do not add it to GPU kernel time as independent overhead.
+GPU work.
 
 ### Nsight Compute and restricted profiling environments
 
@@ -1799,92 +1739,6 @@ Prefer `CHECK-LABEL`, `CHECK-NEXT`, bounded `CHECK`, and `CHECK-DAG` patterns to
 fragile `CHECK-SAME` assertions when operations are intentionally printed on
 separate lines. Tests should verify semantics and types rather than local SSA
 names.
-
-### Host-ABI regression tests
-
-Keep positive v2 begin/bind/commit checks paired with an explicit
-`launch-abi=2` in the command that produces their host IR. Include continued
-`RUN` lines when editing test commands. V3 emits one launch call per source
-launch, not one replacement for each old begin/bind/commit call.
-
-The dedicated v3 test should cover:
-
-- omitted `launch-abi` selecting v3;
-- explicit v3 through the pipeline and standalone lowering;
-- explicit v2 compatibility;
-- absence of generated v2 begin/bind/commit calls in v3 output;
-- request fields, scalar kinds/seeds, and multi-result ordering;
-- identical device TTIR/JSON across host ABI selections where expected; and
-- unsupported host triples and invalid ABI selections.
-
-Keep checks for `TileOffload.launch` IR, data transfers, release, and synchronization
-operations unchanged unless their actual semantics change. V2 matmul argument
-checks cannot be migrated by merely renaming the callee: v3 passes a request
-pointer, and the corresponding request stores must be checked instead.
-
-Run both TileOffload test directories:
-
-```sh
-"$LLVM_BUILD/bin/llvm-lit" -sv \
-  /path/to/llvm-project/flang/test/TileOffload \
-  /path/to/llvm-project/flang/test/Lower/TileOffload
-```
-
-Files ending in `.before-v3-default`, `.before-v2-pin`, or `.bak` are editor
-backups, not normal `.f90`/`.mlir` lit tests. Review changes and remove backups
-before committing. A switch in defaults does not establish that every legacy
-test has been migrated; run the suite and inspect remaining failures.
-
-### Bounds, steps and automatic-packing regressions
-
-Validate positive and negative steps, non-unit constants, runtime step changes,
-non-one/negative bounds, rectangular shapes, partial tiles, empty iteration
-spaces and untouched output elements. A zero runtime step must fail before a
-GPU launch. Repeat through host ABIs 2 and 3 and async modes 0 and 1.
-
-For the automatic-packing patch, run its CPU checks and GPU script before
-benchmarking. GPU cases should include changing A between calls, scratch growth,
-alignment fallbacks, and observing the pack kernel in debug output. CPU mocks
-and successful patch application are not substitutes for Triton parsing,
-device compilation or GPU numerical tests.
-
-### Reduction validation executable
-
-```sh
-cmake -S tests/reduction -B build/reduction \
-  -DTILEOFF_REDUCTION_TEST_DRIVER="$PWD/bin/tileoffload-flang" \
-  -DLLVM_BUILD="$LLVM_BUILD" \
-  -DTRITON_OPT="$TRITON_OPT" \
-  -DMLIR_TRANSLATE="$MLIR_TRANSLATE" \
-  -DLLC="$LLC"
-
-cmake --build build/reduction
-ctest --test-dir build/reduction -V
-```
-
-Configure with `-DTILEOFF_NUM_WARPS=4` to exercise multi-warp reductions.
-
-### CUDA and HIP smoke tests
-
-After building the selected runtime, compile and run a small numerical kernel
-on each available target before testing a full application:
-
-```sh
-# NVIDIA
-tileoffload-flang --tileoff-target cuda --tileoff-gpu-arch sm_90a \
-  vector_add.f90 -O3 -o vector_add.cuda
-TILEOFF_DEBUG=1 TILEOFF_DEVICE=0 ./vector_add.cuda
-
-# AMD
-tileoffload-flang --tileoff-target hip --tileoff-gpu-arch gfx942 \
-  vector_add.f90 -O3 -o vector_add.hip
-TILEOFF_DEBUG=1 TILEOFF_DEVICE=0 ./vector_add.hip
-```
-
-Use an architecture that exactly matches the installed GPU. The HIP path is
-particularly sensitive to compatible Triton, LLVM, ROCm device-library, and
-`ld.lld` revisions.
-
 
 ### Runtime debugging
 
@@ -2123,18 +1977,13 @@ successor chain. In particular, `enter data create(...)` after an allocation
 error check containing `STOP` could be skipped. The fix classifies
 `TileOffloadStandaloneConstruct` as an executable directive in `PFTBuilder.h`.
 Rebuild the frontend and affected Fortran objects; moving the directive to a
-different procedure is a workaround, not the intended requirement. Verify the
-runtime enter/create calls in lowered FIR when diagnosing an old build.
-
-This specific fix does not establish that every unstructured control-flow corner
-case is supported; keep the separate termination-shape diagnostics below.
+different procedure is a workaround, not the intended requirement.
 
 ### Data-region ownership errors
 
 `copyout` and `delete` on `exit data` refer to the innermost active frame. Make
 sure that frame acquired every listed object. Do not use `release` or
-`release all` to bypass a live frame; exit nested regions in last-in,
-first-out order.
+`release all` to bypass a live frame.
 
 ### Descriptor sizing or contiguity errors
 
@@ -2161,7 +2010,7 @@ ordinary fall-through block.
 
 Check the lifetime in this order:
 
-1. Was each input initialized with `copyin` or `update device`?
+1. Was each input initialised with `copyin` or `update device`?
 2. Did host code modify it after the last host-to-device transfer?
 3. Did `no_copyback` intentionally keep the result on the device?
 4. Are in-place read/write arguments bound to the same cached object?
@@ -2202,8 +2051,8 @@ grid, tile, subgroup/block size, accelerator target, and image metadata.
 - The runtime owns one stream per CUDA or HIP context and serializes operations
   within each context; initialization/cleanup also use shared registry/lifetime
   coordination.
-- Host ABI v3 currently requires an explicit supported 64-bit x86_64 or aarch64
-  target triple. V2 remains the explicit compatibility path.
+- Host ABI currently requires an explicit supported 64-bit x86_64 or aarch64
+  target triple.
 - The HIP path depends on revision-compatible Triton, LLVM, ROCm device
   libraries, and `ld.lld`; AMD lowering pass names may require the documented
   environment overrides for a particular Triton revision.
